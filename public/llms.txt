@@ -1,0 +1,24 @@
+# DigitalDuniya
+
+> Pakistan's #1 ecommerce and courier shipping resource. Free shipping calculator, courier rate comparisons (Leopard, TCS, M&P, BlueEx), and guides for Pakistani online sellers.
+
+DigitalDuniya helps Pakistani ecommerce entrepreneurs make smarter shipping and sourcing decisions. We publish in-depth guides, maintain a free shipping calculator, and track the latest courier rates and ecommerce news.
+
+## Pages
+
+- [Home](/): Overview, featured guides, and quick shipping estimate.
+- [Blog](/blog): Latest articles on Pakistani couriers, COD strategies, and ecommerce growth.
+- [Shipping Calculator](/calculator): Free tool to estimate Leopard, TCS, M&P, and BlueEx charges including COD and fuel surcharge.
+- [About](/about): Our mission and team.
+- [Contact](/contact): Get in touch.
+
+## Featured Articles
+
+- [Leopard Courier Rates in Pakistan 2026](/blog/leopard-courier-rates-2026): Complete breakdown of Leopard rates, COD charges, and fuel surcharge.
+- [How to Start an Ecommerce Business in Pakistan](/blog/how-to-start-ecommerce-pakistan): Step-by-step guide covering registration, courier selection, and platform choice (Daraz vs Shopify).
+- [TCS vs Leopard vs M&P](/blog/tcs-vs-leopard-vs-mp): Detailed courier comparison for Pakistani COD sellers.
+
+## Optional
+
+- [Privacy Policy](/privacy)
+- [Terms of Service](/terms)
