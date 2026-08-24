@@ -1,18 +1,30 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
 import { PDFDocument, rgb, degrees, StandardFonts } from "pdf-lib";
 import {
   FileText, Combine, Scissors, RotateCw, Type, Image as ImageIcon,
   ArrowLeft, Download, Upload, AlertCircle, CheckCircle2, Trash2, ListOrdered
 } from "lucide-react";
 
-type ToolType = "merge" | "split" | "watermark" | "rotate" | "reorder" | "image-to-pdf" | null;
+type ToolType = "merge" | "split" | "watermark" | "rotate" | "reorder" | "image-to-pdf" | "edit" | null;
 
 interface FileDetails {
   name: string;
   size: number;
   type: string;
+}
+
+export interface TextBox {
+  id: string;
+  pageIndex: number;
+  text: string;
+  x: number;
+  y: number;
+  fontSize: number;
+  color: string;
+  bgColor: string;
+  isBold: boolean;
 }
 
 export default function PdfToolsClient() {
@@ -26,6 +38,12 @@ export default function PdfToolsClient() {
   const [watermarkColor, setWatermarkColor] = useState("gray");
   const [rotateAngle, setRotateAngle] = useState(90);
   const [imageLayout, setImageLayout] = useState<"a4" | "original">("a4");
+  
+  // PDF Text Editor States
+  const [textBoxes, setTextBoxes] = useState<TextBox[]>([]);
+  const [pdfjsLoaded, setPdfjsLoaded] = useState(false);
+  const [pageCount, setPageCount] = useState(0);
+  const [pdfInstance, setPdfInstance] = useState<any>(null);
   
   const [isPending, startTransition] = useTransition();
   const [errorMsg, setErrorMsg] = useState("");
@@ -42,6 +60,7 @@ export default function PdfToolsClient() {
     setWatermarkColor("gray");
     setRotateAngle(90);
     setImageLayout("a4");
+    setTextBoxes([]);
     setErrorMsg("");
     setSuccessMsg("");
     setProcessingStep("");
@@ -70,6 +89,73 @@ export default function PdfToolsClient() {
     if (files.length <= 1) {
       setErrorMsg("");
     }
+  };
+
+  // Dynamically load PDF.js from cdnjs on mount/demand
+  useEffect(() => {
+    if (activeTool === "edit" && !pdfjsLoaded) {
+      if ((window as any).pdfjsLib) {
+        setPdfjsLoaded(true);
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js";
+      script.onload = () => {
+        const pdfjsLib = (window as any).pdfjsLib;
+        pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js";
+        setPdfjsLoaded(true);
+      };
+      document.head.appendChild(script);
+    }
+  }, [activeTool, pdfjsLoaded]);
+
+  // Render PDF using PDF.js when file is uploaded
+  useEffect(() => {
+    if (activeTool === "edit" && files.length > 0 && pdfjsLoaded) {
+      const file = files[0];
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const pdfjsLib = (window as any).pdfjsLib;
+          const typedarray = new Uint8Array(reader.result as ArrayBuffer);
+          const pdf = await pdfjsLib.getDocument({ data: typedarray }).promise;
+          setPdfInstance(pdf);
+          setPageCount(pdf.numPages);
+          setTextBoxes([]);
+        } catch (err) {
+          console.error("PDF.js loading error:", err);
+          setErrorMsg("Failed to render PDF page previews. Try another file.");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    } else {
+      setPdfInstance(null);
+      setPageCount(0);
+      setTextBoxes([]);
+    }
+  }, [files, activeTool, pdfjsLoaded]);
+
+  const handleAddTextBox = (pageIndex: number, x: number, y: number) => {
+    const newBox: TextBox = {
+      id: Math.random().toString(36).substring(2, 9),
+      pageIndex,
+      text: "Edit text here",
+      x,
+      y,
+      fontSize: 16,
+      color: "black",
+      bgColor: "white", // default white mask to cover text underneath!
+      isBold: false
+    };
+    setTextBoxes((prev) => [...prev, newBox]);
+  };
+
+  const handleUpdateTextBox = (id: string, updates: Partial<TextBox>) => {
+    setTextBoxes((prev) => prev.map((b) => (b.id === id ? { ...b, ...updates } : b)));
+  };
+
+  const handleDeleteTextBox = (id: string) => {
+    setTextBoxes((prev) => prev.filter((b) => b.id !== id));
   };
 
   const downloadBlob = (blob: Blob, defaultName: string) => {
@@ -310,6 +396,68 @@ export default function PdfToolsClient() {
           downloadBlob(blob, "images-converted.pdf");
           setSuccessMsg("Images successfully compiled into PDF!");
         }
+
+        else if (activeTool === "edit") {
+          if (files.length === 0) {
+            throw new Error("Please upload a PDF file to edit.");
+          }
+          setProcessingStep("Loading original PDF document...");
+          const arrayBuffer = await files[0].arrayBuffer();
+          const pdfDoc = await PDFDocument.load(arrayBuffer);
+          const pages = pdfDoc.getPages();
+          
+          setProcessingStep("Embedding standard fonts...");
+          const fontNormal = await pdfDoc.embedFont(StandardFonts.Helvetica);
+          const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+
+          setProcessingStep("Applying interactive edits...");
+          
+          for (const box of textBoxes) {
+            if (box.pageIndex >= pages.length) continue;
+            const page = pages[box.pageIndex];
+            const { width: pWidth, height: pHeight } = page.getSize();
+            
+            // Map percentages to PDF dimensions. Subtract font height to align correctly.
+            const pdfX = (box.x / 100) * pWidth;
+            const pdfY = (1 - (box.y / 100)) * pHeight - (box.fontSize * 0.82);
+            
+            // Draw background rectangle mask to cover/white-out the old text under the box
+            if (box.bgColor !== "transparent") {
+              let fillRgb = rgb(1, 1, 1); // default white
+              if (box.bgColor === "yellow") fillRgb = rgb(0.98, 0.98, 0.7);
+              if (box.bgColor === "gray") fillRgb = rgb(0.9, 0.9, 0.9);
+              
+              const rectHeight = box.fontSize * 1.25;
+              const rectWidth = Math.max(60, box.text.length * box.fontSize * 0.58);
+              
+              page.drawRectangle({
+                x: pdfX,
+                y: pdfY - 2,
+                width: rectWidth,
+                height: rectHeight,
+                color: fillRgb,
+              });
+            }
+            
+            // Draw new styled text
+            const selectedFont = box.isBold ? fontBold : fontNormal;
+            const [r, g, bColor] = getColorRgb(box.color);
+            
+            page.drawText(box.text, {
+              x: pdfX,
+              y: pdfY,
+              size: box.fontSize,
+              font: selectedFont,
+              color: rgb(r, g, bColor),
+            });
+          }
+          
+          setProcessingStep("Compiling new PDF document...");
+          const pdfBytes = await pdfDoc.save();
+          const blob = new Blob([pdfBytes as any], { type: "application/pdf" });
+          downloadBlob(blob, "edited-document.pdf");
+          setSuccessMsg("PDF text edited and downloaded successfully!");
+        }
       } catch (err) {
         console.error("PDF Tools Error:", err);
         setErrorMsg((err as Error).message || "An unexpected error occurred during processing.");
@@ -320,6 +468,7 @@ export default function PdfToolsClient() {
   const tools = [
     { id: "merge" as ToolType, name: "Merge PDF", desc: "Combine multiple PDF documents into a single file.", icon: Combine, color: "bg-sky-50 text-[#0ea5e9] border-sky-100" },
     { id: "split" as ToolType, name: "Split PDF", desc: "Extract specific page ranges into a separate PDF document.", icon: Scissors, color: "bg-rose-50 text-rose-600 border-rose-100" },
+    { id: "edit" as ToolType, name: "Edit PDF Text", desc: "Add, cover, and place new styled text on PDF pages.", icon: FileText, color: "bg-cyan-50 text-cyan-600 border-cyan-100" },
     { id: "watermark" as ToolType, name: "Watermark PDF", desc: "Add customizable text stamp diagonals on all pages.", icon: Type, color: "bg-amber-50 text-[#f59e0b] border-amber-100" },
     { id: "rotate" as ToolType, name: "Rotate PDF", desc: "Rotate pages 90, 180, or 270 degrees in bulk.", icon: RotateCw, color: "bg-emerald-50 text-emerald-600 border-emerald-100" },
     { id: "reorder" as ToolType, name: "Reorder Pages", desc: "Rearrange the sequence of pages within a PDF.", icon: ListOrdered, color: "bg-indigo-50 text-indigo-600 border-indigo-100" },
@@ -377,34 +526,37 @@ export default function PdfToolsClient() {
         <div className="grid lg:grid-cols-[1fr_360px] gap-8 items-start">
           
           {/* File Upload Zone / Document details */}
+          {/* File Upload Zone / Document details */}
           <div className="space-y-6">
-            <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-8 flex flex-col items-center justify-center text-center relative hover:border-[#0ea5e9] transition-colors group">
-              <input
-                type="file"
-                multiple={activeTool === "merge" || activeTool === "image-to-pdf"}
-                accept={activeTool === "image-to-pdf" ? "image/png, image/jpeg, image/jpg" : "application/pdf"}
-                onChange={handleFileChange}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-              <div className="size-16 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-[#0ea5e9] mb-4 group-hover:scale-105 transition-transform duration-300">
-                <Upload className="size-7" />
+            {!(activeTool === "edit" && files.length > 0) && (
+              <div className="bg-white border-2 border-dashed border-slate-200 rounded-3xl p-8 flex flex-col items-center justify-center text-center relative hover:border-[#0ea5e9] transition-colors group">
+                <input
+                  type="file"
+                  multiple={activeTool === "merge" || activeTool === "image-to-pdf"}
+                  accept={activeTool === "image-to-pdf" ? "image/png, image/jpeg, image/jpg" : "application/pdf"}
+                  onChange={handleFileChange}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                />
+                <div className="size-16 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-[#0ea5e9] mb-4 group-hover:scale-105 transition-transform duration-300">
+                  <Upload className="size-7" />
+                </div>
+                <h3 className="font-bold text-slate-800 text-base mb-1">
+                  Drag &amp; Drop files here
+                </h3>
+                <p className="text-xs text-slate-400 max-w-sm mb-4">
+                  or click to browse your local filesystem.
+                  {activeTool === "image-to-pdf" 
+                    ? " Supports PNG and JPEG images." 
+                    : " Supports PDF documents."}
+                </p>
+                <div className="px-4 py-2 bg-slate-50 border rounded-lg text-[10px] uppercase font-bold text-slate-500 tracking-wider">
+                  Processed Locally (Private)
+                </div>
               </div>
-              <h3 className="font-bold text-slate-800 text-base mb-1">
-                Drag &amp; Drop files here
-              </h3>
-              <p className="text-xs text-slate-400 max-w-sm mb-4">
-                or click to browse your local filesystem.
-                {activeTool === "image-to-pdf" 
-                  ? " Supports PNG and JPEG images." 
-                  : " Supports PDF documents."}
-              </p>
-              <div className="px-4 py-2 bg-slate-50 border rounded-lg text-[10px] uppercase font-bold text-slate-500 tracking-wider">
-                Processed Locally (Private)
-              </div>
-            </div>
+            )}
 
             {/* List of uploaded files */}
-            {files.length > 0 && (
+            {files.length > 0 && activeTool !== "edit" && (
               <div className="bg-white border rounded-3xl p-6 shadow-sm">
                 <div className="flex justify-between items-center mb-4 pb-3 border-b">
                   <h4 className="font-bold text-sm text-slate-800">
@@ -428,6 +580,41 @@ export default function PdfToolsClient() {
                         </button>
                       </div>
                     </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* PDF Editor Interactive Canvas Workspace */}
+            {activeTool === "edit" && files.length > 0 && pdfInstance && (
+              <div className="bg-white border rounded-3xl p-6 shadow-sm space-y-4">
+                <div className="flex justify-between items-center border-b pb-3">
+                  <div>
+                    <h4 className="font-bold text-sm text-slate-800">
+                      PDF Interactive Editor (Pages: {pageCount})
+                    </h4>
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Editing: {files[0].name}
+                    </p>
+                  </div>
+                  <button onClick={resetState} className="text-xs text-red-500 hover:underline font-semibold">
+                    Change PDF File
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  💡 <b>How to Edit:</b> Click anywhere on a page to create a text box. Drag to position. Double-click text to type. Change background setting to <b>White Mask</b> to hide/cover the original text underneath!
+                </p>
+                <div className="space-y-6 max-h-[600px] overflow-y-auto p-4 bg-slate-100 rounded-2xl border">
+                  {Array.from({ length: pageCount }).map((_, idx) => (
+                    <PageCanvas
+                      key={idx}
+                      pdf={pdfInstance}
+                      pageIndex={idx}
+                      textBoxes={textBoxes}
+                      onAddTextBox={handleAddTextBox}
+                      onUpdateTextBox={handleUpdateTextBox}
+                      onDeleteTextBox={handleDeleteTextBox}
+                    />
                   ))}
                 </div>
               </div>
@@ -591,6 +778,247 @@ export default function PdfToolsClient() {
           </aside>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ─── PDF.js Page Canvas Component ─── */
+interface PageCanvasProps {
+  pdf: any;
+  pageIndex: number;
+  textBoxes: TextBox[];
+  onAddTextBox: (pageIndex: number, x: number, y: number) => void;
+  onUpdateTextBox: (id: string, updates: Partial<TextBox>) => void;
+  onDeleteTextBox: (id: string) => void;
+}
+
+function PageCanvas({ pdf, pageIndex, textBoxes, onAddTextBox, onUpdateTextBox, onDeleteTextBox }: PageCanvasProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [canvasSize, setCanvasSize] = useState({ w: 0, h: 0 });
+  const [loadingPage, setLoadingPage] = useState(true);
+
+  useEffect(() => {
+    let isCurrent = true;
+    const renderPage = async () => {
+      if (!pdf || !canvasRef.current) return;
+      try {
+        setLoadingPage(true);
+        const page = await pdf.getPage(pageIndex + 1);
+        const viewport = page.getViewport({ scale: 1.2 });
+        const canvas = canvasRef.current;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+        setCanvasSize({ w: viewport.width, h: viewport.height });
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+        await page.render(renderContext).promise;
+        if (isCurrent) setLoadingPage(false);
+      } catch (err) {
+        console.error("Page render error:", err);
+      }
+    };
+    renderPage();
+    return () => {
+      isCurrent = false;
+    };
+  }, [pdf, pageIndex]);
+
+  const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return; // Only trigger if click on overlay background
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    onAddTextBox(pageIndex, x, y);
+  };
+
+  const pageBoxes = textBoxes.filter((b) => b.pageIndex === pageIndex);
+
+  return (
+    <div className="relative border shadow-sm rounded-xl overflow-hidden bg-slate-100 max-w-full mb-6 mx-auto" style={{ width: canvasSize.w ? `${canvasSize.w}px` : "100%" }}>
+      <canvas ref={canvasRef} className="max-w-full h-auto block" />
+      
+      {/* Interactive Drag & Drop Text Overlay Layer */}
+      {!loadingPage && (
+        <div
+          onClick={handleOverlayClick}
+          className="absolute inset-0 cursor-text select-none"
+          style={{ width: "100%", height: "100%" }}
+        >
+          {pageBoxes.map((box) => (
+            <EditableTextBox
+              key={box.id}
+              box={box}
+              onUpdate={(updates) => onUpdateTextBox(box.id, updates)}
+              onDelete={() => onDeleteTextBox(box.id)}
+            />
+          ))}
+        </div>
+      )}
+      
+      {loadingPage && (
+        <div className="absolute inset-0 bg-white/60 flex items-center justify-center min-h-[300px]">
+          <div className="size-6 border-2 border-[#0ea5e9]/30 border-t-[#0ea5e9] rounded-full animate-spin" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Editable Draggable Text Box Component ─── */
+interface EditableTextBoxProps {
+  box: TextBox;
+  onUpdate: (updates: Partial<TextBox>) => void;
+  onDelete: () => void;
+}
+
+function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (isEditing) return; // Don't drag while editing text
+    e.preventDefault();
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!dragStart) return;
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    
+    const parent = document.getElementById(`overlay-${box.id}`)?.parentElement;
+    if (!parent) return;
+    const parentRect = parent.getBoundingClientRect();
+    
+    const newX = Math.max(0, Math.min(95, box.x + (dx / parentRect.width) * 100));
+    const newY = Math.max(0, Math.min(95, box.y + (dy / parentRect.height) * 100));
+    
+    onUpdate({ x: newX, y: newY });
+    setDragStart({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleMouseUp = () => {
+    setDragStart(null);
+  };
+
+  useEffect(() => {
+    if (dragStart) {
+      window.addEventListener("mousemove", handleMouseMove);
+      window.addEventListener("mouseup", handleMouseUp);
+    }
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [dragStart]);
+
+  const colors = {
+    black: "text-black",
+    red: "text-red-600",
+    blue: "text-blue-600",
+    green: "text-green-600",
+    white: "text-white"
+  };
+
+  const bgColors = {
+    white: "bg-white border-slate-300",
+    transparent: "bg-transparent border-transparent",
+    yellow: "bg-yellow-100 border-yellow-300",
+    gray: "bg-slate-100 border-slate-300"
+  };
+
+  return (
+    <div
+      id={`overlay-${box.id}`}
+      style={{
+        position: "absolute",
+        left: `${box.x}%`,
+        top: `${box.y}%`,
+        minWidth: "60px",
+        minHeight: "24px"
+      }}
+      className={`border rounded p-1 flex flex-col group z-20 shadow-sm ${bgColors[box.bgColor as keyof typeof bgColors]}`}
+    >
+      {/* Small drag bar */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="cursor-move h-1.5 bg-[#0ea5e9]/20 rounded-sm mb-1 group-hover:bg-[#0ea5e9]/40 transition-all"
+        title="Drag to reposition"
+      />
+
+      {isEditing ? (
+        <textarea
+          autoFocus
+          value={box.text}
+          onChange={(e) => onUpdate({ text: e.target.value })}
+          onBlur={() => setIsEditing(false)}
+          style={{ fontSize: `${box.fontSize}px` }}
+          className={`w-full h-full bg-transparent border-0 outline-none resize-none font-medium p-0 m-0 leading-tight focus:ring-0 ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
+        />
+      ) : (
+        <div
+          onDoubleClick={() => setIsEditing(true)}
+          style={{ fontSize: `${box.fontSize}px` }}
+          className={`w-full min-h-[16px] pr-4 whitespace-pre-wrap select-all font-medium leading-tight cursor-text ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
+          title="Double click to edit text"
+        >
+          {box.text || <span className="text-slate-400 italic text-[10px]">Double click to type</span>}
+        </div>
+      )}
+
+      {/* Floating properties overlay menu */}
+      <div className="absolute left-0 bottom-full mb-1.5 hidden group-hover:flex items-center gap-1.5 bg-[#0f172a] text-white p-1.5 rounded-lg shadow-xl text-[10px] z-30 whitespace-nowrap">
+        {/* Font size */}
+        <input
+          type="number"
+          value={box.fontSize}
+          onChange={(e) => onUpdate({ fontSize: Math.max(8, parseInt(e.target.value) || 12) })}
+          className="w-8 px-1 py-0.5 bg-slate-800 text-white rounded text-center border-0 outline-none text-[10px]"
+          title="Font Size (px)"
+        />
+        {/* Bold */}
+        <button
+          type="button"
+          onClick={() => onUpdate({ isBold: !box.isBold })}
+          className={`px-1.5 py-0.5 rounded font-bold ${box.isBold ? "bg-[#0ea5e9]" : "bg-slate-800 hover:bg-slate-700"}`}
+        >
+          B
+        </button>
+        {/* Color */}
+        <select
+          value={box.color}
+          onChange={(e) => onUpdate({ color: e.target.value })}
+          className="px-1.5 py-0.5 bg-slate-800 text-white rounded border-0 outline-none text-[9px]"
+        >
+          <option value="black">Black</option>
+          <option value="white">White</option>
+          <option value="red">Red</option>
+          <option value="blue">Blue</option>
+          <option value="green">Green</option>
+        </select>
+        {/* BG Mask */}
+        <select
+          value={box.bgColor}
+          onChange={(e) => onUpdate({ bgColor: e.target.value })}
+          className="px-1.5 py-0.5 bg-slate-800 text-white rounded border-0 outline-none text-[9px]"
+          title="Background Fill"
+        >
+          <option value="white">White Mask</option>
+          <option value="transparent">Transparent</option>
+          <option value="yellow">Yellow</option>
+          <option value="gray">Gray</option>
+        </select>
+        {/* Delete */}
+        <button type="button" onClick={onDelete} className="p-1 bg-red-600 rounded hover:bg-red-700" title="Delete text box">
+          <Trash2 className="size-3" />
+        </button>
+      </div>
     </div>
   );
 }

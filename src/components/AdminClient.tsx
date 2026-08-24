@@ -7,14 +7,16 @@ import {
   getEarningsAction, getAllEarningsAction, saveEarningsAction, getSettingsAction, saveSettingsAction,
   type BlogData, type CommentData,
 } from "@/lib/actions";
+import { ProductsTab, OrdersTab } from "./AdminShop";
+import { getProductsAction, getAllOrdersAction } from "@/lib/shop-actions";
 import { slugify } from "@/lib/utils";
 import {
   LayoutDashboard, FileText, TrendingUp, DollarSign, Settings as SettingsIcon,
   LogOut, Plus, Pencil, Trash2, RefreshCw, Sparkles, CheckCircle2, XCircle,
-  MessageCircle, Eye, EyeOff, Save, Upload, X,
+  MessageCircle, Eye, EyeOff, Save, Upload, X, Package, ShoppingBag, CreditCard
 } from "lucide-react";
 
-type Tab = "dashboard" | "blogs" | "ai" | "comments" | "earnings" | "settings";
+type Tab = "dashboard" | "blogs" | "ai" | "comments" | "earnings" | "products" | "orders" | "payments" | "settings";
 
 type Blog = BlogData;
 type Comment = CommentData;
@@ -45,6 +47,14 @@ export default function AdminClient() {
     setToast(msg);
     setTimeout(() => setToast(""), 3500);
   };
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const urlTab = searchParams.get("tab");
+    if (urlTab && ["dashboard", "blogs", "ai", "comments", "earnings", "products", "orders", "payments", "settings"].includes(urlTab)) {
+      setTab(urlTab as Tab);
+    }
+  }, []);
 
   useEffect(() => {
     checkAdminAction()
@@ -116,8 +126,11 @@ export default function AdminClient() {
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="size-4" /> },
     { id: "blogs", label: "Blogs", icon: <FileText className="size-4" /> },
     { id: "ai", label: "AI Generator", icon: <Sparkles className="size-4" /> },
+    { id: "products", label: "Products", icon: <Package className="size-4" /> },
+    { id: "orders", label: "Orders", icon: <ShoppingBag className="size-4" /> },
     { id: "comments", label: "Comments", icon: <MessageCircle className="size-4" /> },
     { id: "earnings", label: "Earnings", icon: <DollarSign className="size-4" /> },
+    { id: "payments", label: "Payments", icon: <CreditCard className="size-4" /> },
     { id: "settings", label: "Settings", icon: <SettingsIcon className="size-4" /> },
   ];
 
@@ -149,8 +162,11 @@ export default function AdminClient() {
       {tab === "dashboard" && <DashboardTab />}
       {tab === "blogs" && <BlogsTab onToast={showToast} />}
       {tab === "ai" && <AITab onToast={showToast} />}
+      {tab === "products" && <ProductsTab onToast={showToast} />}
+      {tab === "orders" && <OrdersTab onToast={showToast} />}
       {tab === "comments" && <CommentsTab onToast={showToast} />}
       {tab === "earnings" && <EarningsTab onToast={showToast} />}
+      {tab === "payments" && <PaymentsTab onToast={showToast} />}
       {tab === "settings" && <SettingsTab onToast={showToast} />}
 
       {toast && (
@@ -165,27 +181,39 @@ export default function AdminClient() {
 /* ─── Dashboard Tab ─── */
 function DashboardTab() {
   const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [orders, setOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getBlogsAction()
-      .then((b) => {
+    Promise.all([
+      getBlogsAction(),
+      getProductsAction(false),
+      getAllOrdersAction()
+    ])
+      .then(([b, p, o]) => {
         setBlogs(b);
+        setProducts(p);
+        setOrders(o);
         setLoading(false);
       })
       .catch((err) => {
-        console.error("DashboardTab failed to load blogs:", err);
+        console.error("DashboardTab failed to load data:", err);
         setLoading(false);
       });
   }, []);
 
   if (loading) return <LoadingSpinner />;
 
+  const paidOrders = orders.filter((o) => o.status === "paid");
+  const totalSales = paidOrders.reduce((sum, o) => sum + (o.amount || 0), 0);
+  const pendingOrders = orders.filter((o) => o.status === "pending").length;
+
   const stats = [
     { label: "Total Blogs", value: blogs.length, icon: "📝", color: "bg-sky-50 border-sky-200" },
-    { label: "Avg SEO Score", value: "—", icon: "📊", color: "bg-emerald-50 border-emerald-200" },
-    { label: "Categories", value: 10, icon: "🗂️", color: "bg-violet-50 border-violet-200" },
-    { label: "Calculator Tool", value: "Active ✓", icon: "🧮", color: "bg-amber-50 border-amber-200" },
+    { label: "Total Products", value: products.length, icon: "📦", color: "bg-indigo-50 border-indigo-200" },
+    { label: "Pending Orders", value: pendingOrders, icon: "⏳", color: "bg-amber-50 border-amber-200" },
+    { label: "Total Shop Revenue", value: `Rs. ${totalSales.toLocaleString()}`, icon: "💰", color: "bg-emerald-50 border-emerald-200" },
   ];
 
   const health = [
@@ -923,6 +951,69 @@ function SettingsTab({ onToast }: { onToast: (s: string) => void }) {
           className="w-full py-3 rounded-xl bg-[#0ea5e9] text-white font-bold hover:bg-[#0284c7] transition-colors flex items-center justify-center gap-2 shadow-md shadow-sky-100">
           <Save className="size-4" /> Save All Settings
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Payments Tab ─── */
+function PaymentsTab({ onToast }: { onToast: (s: string) => void }) {
+  const [jazzcashNumber, setJazzcashNumber] = useState("");
+  const [easypaisaNumber, setEasypaisaNumber] = useState("");
+  const [bankName, setBankName] = useState("");
+  const [bankAccount, setBankAccount] = useState("");
+  const [bankTitle, setBankTitle] = useState("");
+  const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [, startT] = useTransition();
+
+  useEffect(() => {
+    getSettingsAction().then((s) => {
+      setJazzcashNumber(s.jazzcashNumber || "");
+      setEasypaisaNumber(s.easypaisaNumber || "");
+      setBankName(s.bankName || "");
+      setBankAccount(s.bankAccount || "");
+      setBankTitle(s.bankTitle || "");
+      setWhatsappNumber(s.whatsappNumber || "");
+      setLoading(false);
+    });
+  }, []);
+
+  const save = () => {
+    startT(async () => {
+      const res = await saveSettingsAction({ jazzcashNumber, easypaisaNumber, bankName, bankAccount, bankTitle, whatsappNumber });
+      if (res.success) {
+        onToast("Payment settings saved!");
+      } else {
+        onToast("Failed to save settings");
+      }
+    });
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <div className="max-w-xl mx-auto space-y-4">
+      <div className="bg-white border rounded-2xl p-6 space-y-4 shadow-sm">
+        <label className="block text-sm font-semibold text-slate-700">JazzCash Number
+          <input value={jazzcashNumber} onChange={(e) => setJazzcashNumber(e.target.value)} className="w-full mt-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] text-slate-800" placeholder="03xx..." />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">EasyPaisa Number
+          <input value={easypaisaNumber} onChange={(e) => setEasypaisaNumber(e.target.value)} className="w-full mt-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] text-slate-800" placeholder="03xx..." />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">Bank Name
+          <input value={bankName} onChange={(e) => setBankName(e.target.value)} className="w-full mt-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] text-slate-800" />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">Account Title
+          <input value={bankTitle} onChange={(e) => setBankTitle(e.target.value)} className="w-full mt-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] text-slate-800" />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">Account Number
+          <input value={bankAccount} onChange={(e) => setBankAccount(e.target.value)} className="w-full mt-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] text-slate-800" />
+        </label>
+        <label className="block text-sm font-semibold text-slate-700">WhatsApp Number (with country code)
+          <input value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} className="w-full mt-1 px-4 py-3 border-2 border-slate-100 rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] text-slate-800" placeholder="923001234567" />
+        </label>
+        <button onClick={save} className="w-full py-3 rounded-xl bg-[#0ea5e9] text-white font-bold flex items-center justify-center gap-2"><Save className="size-4" /> Save Payment Settings</button>
       </div>
     </div>
   );
