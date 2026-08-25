@@ -576,6 +576,52 @@ export async function getGoogleTrendsAction(): Promise<string[]> {
   }
 }
 
+// Helper to call Gemini API with dynamic model/endpoint fallbacks
+async function callGeminiApi(prompt: string, jsonMode: boolean, apiKey: string): Promise<string> {
+  const attempts = [
+    { url: "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent", model: "gemini-1.5-flash (v1)" },
+    { url: "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent", model: "gemini-2.0-flash (v1)" },
+    { url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", model: "gemini-1.5-flash (v1beta)" },
+    { url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent", model: "gemini-2.0-flash (v1beta)" }
+  ];
+
+  let lastError = "";
+
+  for (const attempt of attempts) {
+    console.log(`[actions.ts] callGeminiApi trying model: ${attempt.model}...`);
+    try {
+      const res = await fetch(`${attempt.url}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: jsonMode ? "application/json" : undefined
+          }
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          console.log(`[actions.ts] callGeminiApi SUCCESS with ${attempt.model}`);
+          return text;
+        }
+      }
+      
+      const errMsg = data?.error?.message || `Status ${res.status}`;
+      console.warn(`[actions.ts] callGeminiApi failed for ${attempt.model}: ${errMsg}`);
+      lastError = errMsg;
+    } catch (err) {
+      console.warn(`[actions.ts] callGeminiApi error for ${attempt.model}:`, err);
+      lastError = (err as Error).message;
+    }
+  }
+
+  throw new Error(`All Gemini API model endpoints failed. Last error: ${lastError}`);
+}
+
 // ─── AI Generation (Server-side, keys never exposed to client) ─────────────────
 export async function generateBlogAction(topic: string) {
   console.log("[actions.ts] generateBlogAction START for topic:", topic);
@@ -621,24 +667,7 @@ Return your output ONLY as a valid JSON object matching this schema (do NOT wrap
 
     if (geminiKey) {
       console.log("[actions.ts] generateBlogAction: Generating using Gemini API...");
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            responseMimeType: "application/json"
-          }
-        })
-      });
-      
-      const data = await res.json();
-      if (!res.ok) {
-        console.error("[actions.ts] generateBlogAction: Gemini API error:", res.status, data);
-        return { success: false, error: data?.error?.message || `Gemini API returned status ${res.status}` };
-      }
-      
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = await callGeminiApi(prompt, true, geminiKey);
       parsed = JSON.parse(text.trim());
     } else {
       console.log("[actions.ts] generateBlogAction: Generating using Groq Llama API...");
@@ -732,19 +761,7 @@ Return ONLY a valid JSON object matching this schema (do NOT wrap it in any form
 
     let parsed: any;
     if (geminiKey) {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: auditPrompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error?.message || `Gemini API status ${res.status}`);
-      }
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = await callGeminiApi(auditPrompt, true, geminiKey);
       parsed = JSON.parse(text.trim());
     } else {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -823,19 +840,7 @@ Return ONLY a valid JSON object matching this schema (do NOT wrap it in any form
 
     let parsed: any;
     if (geminiKey) {
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: auditPrompt }] }],
-          generationConfig: { responseMimeType: "application/json" }
-        })
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data?.error?.message || `Gemini API status ${res.status}`);
-      }
-      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      const text = await callGeminiApi(auditPrompt, true, geminiKey);
       parsed = JSON.parse(text.trim());
     } else {
       const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
