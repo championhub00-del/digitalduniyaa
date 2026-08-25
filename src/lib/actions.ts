@@ -579,6 +579,8 @@ export async function getGoogleTrendsAction(): Promise<string[]> {
 // Helper to call Gemini API with dynamic model/endpoint fallbacks
 async function callGeminiApi(prompt: string, jsonMode: boolean, apiKey: string): Promise<string> {
   const attempts = [
+    { url: "https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash:generateContent", model: "gemini-3.6-flash (v1)" },
+    { url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent", model: "gemini-3.6-flash (v1beta)" },
     { url: "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent", model: "gemini-1.5-flash (v1)" },
     { url: "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent", model: "gemini-2.0-flash (v1)" },
     { url: "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent", model: "gemini-1.5-flash (v1beta)" },
