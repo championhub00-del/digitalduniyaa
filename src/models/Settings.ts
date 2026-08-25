@@ -13,6 +13,7 @@ export interface ISettings extends Document {
   bankAccount: string;
   bankTitle: string;
   whatsappNumber: string;
+  lastSiteAuditRecommendations: string;
 }
 
 const SettingsSchema: Schema = new Schema({
@@ -28,6 +29,7 @@ const SettingsSchema: Schema = new Schema({
   bankAccount: { type: String, default: "" },
   bankTitle: { type: String, default: "" },
   whatsappNumber: { type: String, default: "923000000000" },
+  lastSiteAuditRecommendations: { type: String, default: "" },
 });
 
 const Settings: Model<ISettings> = mongoose.models.Settings || mongoose.model<ISettings>("Settings", SettingsSchema);

@@ -5,7 +5,7 @@ import {
   loginAction, logoutAction, checkAdminAction, getBlogsAction, saveBlogAction, deleteBlogAction,
   generateBlogAction, getAllCommentsAction, deleteCommentAction, toggleCommentAction,
   getEarningsAction, getAllEarningsAction, saveEarningsAction, getSettingsAction, saveSettingsAction,
-  getGoogleTrendsAction, auditBlogPostAction, auditWholeWebsiteAction,
+  getGoogleTrendsAction, auditBlogPostAction, auditWholeWebsiteAction, autoOptimizeBlogPostAction,
   type BlogData, type CommentData,
 } from "@/lib/actions";
 import { ProductsTab, OrdersTab } from "./AdminShop";
@@ -931,6 +931,27 @@ function SEOAgentTab({ onToast }: { onToast: (s: string) => void }) {
     }
   };
 
+  const [optimizing, setOptimizing] = useState(false);
+
+  const handleAutoOptimize = async () => {
+    if (!selectedBlogId) return;
+    setOptimizing(true);
+    const res = await autoOptimizeBlogPostAction(selectedBlogId);
+    setOptimizing(false);
+    if (res.success) {
+      onToast("✅ AI Auto-Optimization & Placements Completed!");
+      setAuditingPost(true);
+      setPostAudit(null);
+      const auditRes = await auditBlogPostAction(selectedBlogId);
+      setAuditingPost(false);
+      if (auditRes.success && auditRes.audit) {
+        setPostAudit(auditRes.audit);
+      }
+    } else {
+      onToast(`Error: ${res.error}`);
+    }
+  };
+
   return (
     <div className="grid lg:grid-cols-2 gap-8 items-start">
       {/* Site Audit Column */}
@@ -1072,6 +1093,16 @@ function SEOAgentTab({ onToast }: { onToast: (s: string) => void }) {
                 <div className="text-lg font-black text-emerald-600 mt-1.5 uppercase">{postAudit.monetizationPotential}</div>
               </div>
             </div>
+
+            {/* 1-Click Auto-Fix Button */}
+            <button
+              onClick={handleAutoOptimize}
+              disabled={optimizing || auditingPost}
+              className="w-full py-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 hover:opacity-95 text-white font-extrabold text-xs rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              <Sparkles className={`size-4 ${optimizing ? "animate-spin" : ""}`} />
+              {optimizing ? "Auto-Optimizing to 100/100..." : "✨ 1-Click AI Auto-Fix (Rewrite Content to 100/100)"}
+            </button>
 
             {/* Positives */}
             <div className="space-y-3">

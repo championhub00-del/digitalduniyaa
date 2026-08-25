@@ -43,6 +43,7 @@ export type SettingsData = {
   bankAccount: string;
   bankTitle: string;
   whatsappNumber: string;
+  lastSiteAuditRecommendations?: string;
 };
 
 export type EarningsData = {
@@ -63,6 +64,7 @@ const DEFAULT_SETTINGS: SettingsData = {
   bankAccount: "",
   bankTitle: "",
   whatsappNumber: "923000000000",
+  lastSiteAuditRecommendations: "",
 };
 
 async function safeConnect() {
@@ -399,6 +401,7 @@ export async function getSettingsAction(): Promise<SettingsData> {
       bankAccount: dbSettings.bankAccount || "",
       bankTitle: dbSettings.bankTitle || "",
       whatsappNumber: dbSettings.whatsappNumber || "923000000000",
+      lastSiteAuditRecommendations: dbSettings.lastSiteAuditRecommendations || "",
     };
   } catch (err) {
     console.error("[actions.ts] getSettingsAction ERROR:", err);
@@ -418,6 +421,7 @@ export async function saveSettingsAction(data: {
   bankAccount?: string;
   bankTitle?: string;
   whatsappNumber?: string;
+  lastSiteAuditRecommendations?: string;
 }) {
   console.log("[actions.ts] saveSettingsAction START");
   try {
@@ -652,8 +656,15 @@ The article must contain:
 6. A detailed FAQ section at the end with at least 3 questions inside <h3> elements.
 7. Use high-quality conversational Roman Urdu mixed with professional English terms (perfect blend that sounds natural and expert, avoiding robotic translations).`;
 
+    let auditPromptContext = "";
+    if (settings.lastSiteAuditRecommendations) {
+      const recs = settings.lastSiteAuditRecommendations.split(" | ");
+      auditPromptContext = `\nCRITICAL SITE-WIDE AUDIT RULES TO REMEMBER & IMPLEMENT:\n${recs.map((r: string) => `- ${r}`).join("\n")}\n`;
+    }
+
     const prompt = `Write a complete SEO-optimized blog post in natural Roman Urdu + English hybrid for our Pakistani portal about: "${topic}".
 ${BLOG_HTML_REQUIREMENTS}
+${auditPromptContext}
 
 Return your output ONLY as a valid JSON object matching this schema (do NOT wrap it in any formatting tags or backticks):
 {
@@ -863,10 +874,108 @@ Return ONLY a valid JSON object matching this schema (do NOT wrap it in any form
       parsed = JSON.parse(text.trim());
     }
 
+    try {
+      const recsString = [
+        ...(parsed.recommendations || []),
+        ...(parsed.trafficStrategies || [])
+      ].join(" | ");
+      await saveSettingsAction({ lastSiteAuditRecommendations: recsString });
+      console.log("[actions.ts] auditWholeWebsiteAction saved recommendations to Settings.");
+    } catch (saveErr) {
+      console.error("[actions.ts] auditWholeWebsiteAction failed to save settings:", saveErr);
+    }
+
     console.log("[actions.ts] auditWholeWebsiteAction SUCCESS");
     return { success: true, audit: parsed };
   } catch (err) {
     console.error("[actions.ts] auditWholeWebsiteAction ERROR:", err);
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+export async function autoOptimizeBlogPostAction(blogId: string) {
+  console.log("[actions.ts] autoOptimizeBlogPostAction START for ID:", blogId);
+  try {
+    if (!(await isAdmin())) {
+      return { success: false, error: "Unauthorized" };
+    }
+    await connectToDatabase();
+    const blog = await Blog.findById(blogId);
+    if (!blog) {
+      return { success: false, error: "Blog post not found." };
+    }
+
+    const settings = await getSettingsAction();
+    const geminiKey = settings.geminiKey || process.env.GEMINI_API_KEY || "";
+    const groqKey = settings.groqKey || process.env.GROQ_API_KEY || "";
+
+    if (!geminiKey && !groqKey) {
+      return { success: false, error: "Please configure your Gemini API Key or Groq API Key in Settings to run the AI Auto-Optimizer." };
+    }
+
+    const optimizationPrompt = `You are a professional SEO Specialist and Copywriter AI Agent specializing in Google AdSense optimization, local search rankings, and keyword mapping in Pakistan.
+Optimize the following blog post to achieve an SEO Score of 100/100.
+
+Original Title: "${blog.title}"
+Original Meta Description: "${blog.metaDescription}"
+Original Tags/Keywords: "${(blog.tags || []).join(", ")}"
+
+Original HTML Content:
+${blog.content}
+
+TASK:
+1. Rewrite the HTML content to be much deeper, engaging, and structured.
+2. Insert Google AdSense ad slots inside the content represented as placeholder banners:
+   <div class="my-6 p-4 bg-slate-50 border border-dashed rounded-xl text-center text-xs text-slate-400 font-bold uppercase tracking-wider"><!-- GOOGLE_ADSENSE_AD_UNIT --> Sponsored Advertisement Slot</div>
+3. Add high CPC local Pakistani keywords.
+4. Enhance readability, add tip boxes, comparison tables, step cards, and FAQ details if missing.
+5. Keep conversational Roman Urdu mixed with professional English.
+
+Return ONLY a valid JSON object matching this schema (do NOT wrap it in any formatting tags, backticks or markdown):
+{
+  "title": "Optimized catchy SEO title",
+  "metaDescription": "Optimized meta description 150-160 chars",
+  "keywords": "comma-separated list of keywords",
+  "content": "the complete rewritten HTML content"
+}`;
+
+    let parsed: any;
+    if (geminiKey) {
+      const text = await callGeminiApi(optimizationPrompt, true, geminiKey);
+      parsed = JSON.parse(text.trim());
+    } else {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: optimizationPrompt }],
+          max_tokens: 3000,
+          response_format: { type: "json_object" }
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `Groq API status ${res.status}`);
+      }
+      const text = data.choices?.[0]?.message?.content || "";
+      parsed = JSON.parse(text.trim());
+    }
+
+    // Save optimized contents back to the Blog document in MongoDB
+    blog.title = parsed.title || blog.title;
+    blog.metaDescription = parsed.metaDescription || blog.metaDescription;
+    if (parsed.keywords) {
+      blog.tags = parsed.keywords.split(",").map((s: string) => s.trim()).filter(Boolean);
+    }
+    blog.content = parsed.content || blog.content;
+    
+    await blog.save();
+
+    console.log("[actions.ts] autoOptimizeBlogPostAction SUCCESS");
+    return { success: true, blog };
+  } catch (err) {
+    console.error("[actions.ts] autoOptimizeBlogPostAction ERROR:", err);
     return { success: false, error: (err as Error).message };
   }
 }
