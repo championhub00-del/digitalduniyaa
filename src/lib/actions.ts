@@ -531,6 +531,51 @@ export async function getSubscribersAction() {
   }
 }
 
+// ─── Google Trends Scraper (Pakistan) ──────────────────────────────────────────
+export async function getGoogleTrendsAction(): Promise<string[]> {
+  console.log("[actions.ts] getGoogleTrendsAction START");
+  try {
+    const res = await fetch("https://trends.google.com/trends/trendingsearches/daily/rss?geo=PK", {
+      next: { revalidate: 1800 } // Cache trends for 30 minutes
+    });
+    if (!res.ok) {
+      throw new Error(`Trends RSS returned status ${res.status}`);
+    }
+    const xml = await res.text();
+    
+    // Extract item titles from RSS XML
+    const items = xml.split("<item>");
+    const trends: string[] = [];
+    
+    for (let i = 1; i < items.length; i++) {
+      const item = items[i];
+      const match = item.match(/<title>([\s\S]*?)<\/title>/);
+      if (match && match[1]) {
+        const cleaned = match[1].replace("<![CDATA[", "").replace("]]>", "").trim();
+        if (cleaned && !trends.includes(cleaned)) {
+          trends.push(cleaned);
+        }
+      }
+    }
+    
+    console.log("[actions.ts] getGoogleTrendsAction SUCCESS, count:", trends.length);
+    return trends.slice(0, 15); // Return top 15 trends
+  } catch (err) {
+    console.error("[actions.ts] getGoogleTrendsAction ERROR:", err);
+    // Return high-quality fallback trends for Pakistan e-commerce/tech context
+    return [
+      "FBR Tax Return Registration 2026 Pakistan",
+      "TCS Cash on Delivery Account Setup",
+      "Leopard Courier Rates in Pakistan 2026",
+      "Shopify Store Business Guide Pakistan",
+      "Karachi Wholesale Markets Sourcing Guide",
+      "JazzCash & EasyPaisa E-Commerce Integration",
+      "Best Laptops Under 100k In Lahore",
+      "Daraz Seller Center Registration Guide"
+    ];
+  }
+}
+
 // ─── AI Generation (Server-side, keys never exposed to client) ─────────────────
 export async function generateBlogAction(topic: string) {
   console.log("[actions.ts] generateBlogAction START for topic:", topic);
@@ -541,50 +586,88 @@ export async function generateBlogAction(topic: string) {
     }
     await connectToDatabase();
     const settings = await getSettingsAction();
+    const geminiKey = settings.geminiKey || process.env.GEMINI_API_KEY || "";
     const groqKey = settings.groqKey || process.env.GROQ_API_KEY || "";
-    console.log("[actions.ts] generateBlogAction: groqKey length:", groqKey.length);
-    if (!groqKey) {
-      console.warn("[actions.ts] generateBlogAction: missing groqKey");
-      return { success: false, error: "No Groq API key configured in Settings." };
+
+    if (!geminiKey && !groqKey) {
+      console.warn("[actions.ts] generateBlogAction: missing keys");
+      return { success: false, error: "Please configure your Gemini API Key or Groq API Key in Admin Settings." };
     }
 
-    const BLOG_HTML_REQUIREMENTS = `Write content as valid HTML only (never Markdown), with at least 6 <h2> sections and minimum 1200 words. Include at least one each of <div class="tip-box">, <div class="warning-box">, <div class="step-card">, and <div class="highlight-box">. Always include a proper HTML comparison table (<table>) with relevant data. Use real Pakistani prices, examples, and city names where relevant. First paragraph must be engaging and hook the reader. Each <h2> section must have at least 2-3 paragraphs of detailed content. Add a FAQ section at the end with at least 3 questions in <h3> tags.`;
-    const prompt = `Write a complete SEO blog post in Roman Urdu + English mix for a Pakistani audience about: "${topic}".
+    const BLOG_HTML_REQUIREMENTS = `Write a deep, engaging content formatted as valid raw HTML blocks (never use markdown syntax, code wrappers, or markdown bold text). 
+The article must contain:
+1. Minimum 1500 words of rich, comprehensive, and helpful content.
+2. At least 6 separate <h2> sections outlining different subtopics.
+3. At least one of each styled container: <div class="tip-box">, <div class="warning-box">, <div class="step-card">, and <div class="highlight-box">.
+4. A proper comparison data table (<table>) styled with table headers and at least 3 rows of data.
+5. Real Pakistani prices, courier examples, cities, and real context.
+6. A detailed FAQ section at the end with at least 3 questions inside <h3> elements.
+7. Use high-quality conversational Roman Urdu mixed with professional English terms (perfect blend that sounds natural and expert, avoiding robotic translations).`;
+
+    const prompt = `Write a complete SEO-optimized blog post in natural Roman Urdu + English hybrid for our Pakistani portal about: "${topic}".
 ${BLOG_HTML_REQUIREMENTS}
 
-Return ONLY this JSON (no markdown, no backticks):
+Return your output ONLY as a valid JSON object matching this schema (do NOT wrap it in any formatting tags or backticks):
 {
-  "title": "SEO optimized title here",
-  "slug": "url-friendly-slug-here",
-  "metaDescription": "150 char meta description",
-  "keywords": "keyword1, keyword2, keyword3, keyword4, keyword5",
-  "content": "valid styled HTML using all required CSS classes",
-  "IMAGE_PROMPT": "Detailed prompt for generating a highly realistic, professional DSLR photograph representing this topic, suitable for a premium blog banner. Describe real-world items, clean lighting, and avoid any illustration, drawing, or clip-art keywords."
+  "title": "A highly catchy, clickable, and SEO-optimized title for the article",
+  "slug": "url-friendly-slug-containing-topic-keywords",
+  "metaDescription": "150-160 characters summary of the article containing primary keywords",
+  "keywords": "comma-separated list of 5-8 relevant keywords",
+  "content": "the entire valid styled HTML string with required classes",
+  "IMAGE_PROMPT": "A highly realistic, professional DSLR stock photograph representing this topic, suitable for a premium blog banner. Mention objects, office setups, Pakistani currency/elements if applicable, clean studio lighting, shallow depth of field, and avoid illustration, cartoon, fake, or clip-art elements."
 }`;
 
-    console.log("[actions.ts] generateBlogAction: Sending API request to Groq...");
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 3000,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) {
-      console.error("[actions.ts] generateBlogAction: Groq API error response status:", res.status, data);
-      return { success: false, error: data?.error?.message || `Groq ${res.status}` };
+    let parsed: any;
+
+    if (geminiKey) {
+      console.log("[actions.ts] generateBlogAction: Generating using Gemini API...");
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json"
+          }
+        })
+      });
+      
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("[actions.ts] generateBlogAction: Gemini API error:", res.status, data);
+        return { success: false, error: data?.error?.message || `Gemini API returned status ${res.status}` };
+      }
+      
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      parsed = JSON.parse(text.trim());
+    } else {
+      console.log("[actions.ts] generateBlogAction: Generating using Groq Llama API...");
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 3000,
+          response_format: { type: "json_object" }
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        console.error("[actions.ts] generateBlogAction: Groq API error:", res.status, data);
+        return { success: false, error: data?.error?.message || `Groq API returned status ${res.status}` };
+      }
+
+      const text: string = data.choices?.[0]?.message?.content || "";
+      parsed = JSON.parse(text.trim());
     }
-    const text: string = data.choices?.[0]?.message?.content || "";
-    const clean = text.replace(/```json|```/g, "").trim();
-    const m = clean.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(m ? m[0] : clean);
-    
-    // Fallback and prompt are optimized for realistic photography instead of cartoons/illustrations
-    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(parsed.IMAGE_PROMPT || topic + ", professional DSLR photography, realistic, high resolution, detailed, studio lighting")}?width=1200&height=630&nologo=true`;
-    console.log("[actions.ts] generateBlogAction SUCCESS: Blog generated successfully");
+
+    // Generate high quality banner image from Pollinations using the refined prompt
+    const finalPrompt = parsed.IMAGE_PROMPT || `${topic}, realistic DSLR photo, high definition stock photograph, warm lighting, professional setup`;
+    const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt)}?width=1200&height=630&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
+
+    console.log("[actions.ts] generateBlogAction SUCCESS");
     return {
       success: true,
       blog: {

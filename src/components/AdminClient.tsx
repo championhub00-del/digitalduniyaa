@@ -5,6 +5,7 @@ import {
   loginAction, logoutAction, checkAdminAction, getBlogsAction, saveBlogAction, deleteBlogAction,
   generateBlogAction, getAllCommentsAction, deleteCommentAction, toggleCommentAction,
   getEarningsAction, getAllEarningsAction, saveEarningsAction, getSettingsAction, saveSettingsAction,
+  getGoogleTrendsAction,
   type BlogData, type CommentData,
 } from "@/lib/actions";
 import { ProductsTab, OrdersTab } from "./AdminShop";
@@ -13,7 +14,8 @@ import { slugify } from "@/lib/utils";
 import {
   LayoutDashboard, FileText, TrendingUp, DollarSign, Settings as SettingsIcon,
   LogOut, Plus, Pencil, Trash2, RefreshCw, Sparkles, CheckCircle2, XCircle,
-  MessageCircle, Eye, EyeOff, Save, Upload, X, Package, ShoppingBag, CreditCard
+  MessageCircle, Eye, EyeOff, Save, Upload, X, Package, ShoppingBag, CreditCard,
+  Globe, Image as ImageIcon, Maximize2
 } from "lucide-react";
 
 type Tab = "dashboard" | "blogs" | "ai" | "comments" | "earnings" | "products" | "orders" | "payments" | "settings";
@@ -135,39 +137,69 @@ export default function AdminClient() {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-[#0f172a]">Admin Dashboard</h1>
-          <p className="text-slate-400 text-sm mt-0.5">DigitalDuniya Control Panel</p>
-        </div>
-        <button onClick={handleLogout}
-          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[var(--border)] bg-white text-sm font-medium hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-all">
-          <LogOut className="size-4" /> Logout
-        </button>
-      </div>
+    <div className="max-w-7xl mx-auto px-4 py-6 md:py-10">
+      {/* Responsive dashboard sidebar layout */}
+      <div className="grid md:grid-cols-[240px_1fr] gap-8 items-start">
+        
+        {/* Left Sidebar Menu */}
+        <aside className="bg-white border border-[var(--border)] rounded-2xl p-5 shadow-sm space-y-6 md:sticky md:top-6">
+          <div className="flex flex-col gap-1">
+            <span className="text-sm font-extrabold text-[#0ea5e9] tracking-wider uppercase">DigitalDuniya</span>
+            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Admin Control Panel</span>
+          </div>
 
-      {/* Tabs */}
-      <div className="flex flex-wrap gap-1 mb-7 bg-[#f1f5f9] rounded-xl p-1">
-        {TABS.map(({ id, label, icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-              tab === id ? "bg-white text-[#0ea5e9] shadow-sm" : "text-slate-500 hover:text-[#0f172a]"
-            }`}>
-            {icon} {label}
+          <nav className="flex flex-col gap-1">
+            {TABS.map(({ id, label, icon }) => (
+              <button
+                key={id}
+                onClick={() => setTab(id)}
+                className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                  tab === id 
+                    ? "bg-[#0ea5e9] text-white shadow-md shadow-sky-100" 
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"
+                }`}
+              >
+                {icon}
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
+
+          <hr className="border-slate-100" />
+
+          {/* Logout Action */}
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-bold text-red-500 hover:bg-red-50 transition-all text-left"
+          >
+            <LogOut className="size-4" />
+            <span>Logout Account</span>
           </button>
-        ))}
-      </div>
+        </aside>
 
-      {tab === "dashboard" && <DashboardTab />}
-      {tab === "blogs" && <BlogsTab onToast={showToast} />}
-      {tab === "ai" && <AITab onToast={showToast} />}
-      {tab === "products" && <ProductsTab onToast={showToast} />}
-      {tab === "orders" && <OrdersTab onToast={showToast} />}
-      {tab === "comments" && <CommentsTab onToast={showToast} />}
-      {tab === "earnings" && <EarningsTab onToast={showToast} />}
-      {tab === "payments" && <PaymentsTab onToast={showToast} />}
-      {tab === "settings" && <SettingsTab onToast={showToast} />}
+        {/* Right Main Content Board */}
+        <main className="space-y-6 min-w-0">
+          <header className="flex justify-between items-center pb-4 border-b">
+            <div>
+              <h1 className="text-xl md:text-2xl font-extrabold text-[#0f172a] capitalize">{tab} Management</h1>
+              <p className="text-slate-400 text-[11px] font-medium mt-0.5">Control panel parameters for website {tab} options</p>
+            </div>
+          </header>
+
+          <div className="min-h-[400px]">
+            {tab === "dashboard" && <DashboardTab />}
+            {tab === "blogs" && <BlogsTab onToast={showToast} />}
+            {tab === "ai" && <AITab onToast={showToast} />}
+            {tab === "products" && <ProductsTab onToast={showToast} />}
+            {tab === "orders" && <OrdersTab onToast={showToast} />}
+            {tab === "comments" && <CommentsTab onToast={showToast} />}
+            {tab === "earnings" && <EarningsTab onToast={showToast} />}
+            {tab === "payments" && <PaymentsTab onToast={showToast} />}
+            {tab === "settings" && <SettingsTab onToast={showToast} />}
+          </div>
+        </main>
+
+      </div>
 
       {toast && (
         <div className="fixed bottom-6 right-6 bg-[#0f172a] text-white px-5 py-3 rounded-xl shadow-xl text-sm z-50 flex items-center gap-2 animate-in slide-in-from-bottom-4">
@@ -608,13 +640,37 @@ function BlogEditor({ blog, onSave, onCancel, onToast }: {
   );
 }
 
-/* ─── AI Generator Tab ─── */
 function AITab({ onToast }: { onToast: (s: string) => void }) {
   const [topic, setTopic] = useState("");
   const [generating, setGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
   const [generated, setGenerated] = useState<Blog | null>(null);
   const [saving, startSave] = useTransition();
+
+  // Pakistan Google Trends States
+  const [trends, setTrends] = useState<string[]>([]);
+  const [loadingTrends, setLoadingTrends] = useState(false);
+
+  // Custom Image Generation States
+  const [imagePrompt, setImagePrompt] = useState("");
+  const [regeneratingImg, setRegeneratingImg] = useState(false);
+
+  const fetchTrends = () => {
+    setLoadingTrends(true);
+    getGoogleTrendsAction()
+      .then((res) => {
+        setTrends(res);
+        setLoadingTrends(false);
+      })
+      .catch((err) => {
+        console.error("Failed to load Google Trends:", err);
+        setLoadingTrends(false);
+      });
+  };
+
+  useEffect(() => {
+    fetchTrends();
+  }, []);
 
   const generate = async (t: string) => {
     if (!t.trim()) { onToast("Enter a topic first"); return; }
@@ -628,6 +684,7 @@ function AITab({ onToast }: { onToast: (s: string) => void }) {
     setProgress(100);
     if (result.success && result.blog) {
       setGenerated({ _id: "", createdAt: "", ...result.blog } as Blog);
+      setImagePrompt(t); // Seed image prompt with the topic
       onToast("✨ Blog generated successfully!");
     } else {
       onToast(`Error: ${result.error}`);
@@ -635,39 +692,100 @@ function AITab({ onToast }: { onToast: (s: string) => void }) {
     setTimeout(() => { setGenerating(false); setProgress(0); }, 800);
   };
 
+  const handleRegenerateImage = () => {
+    if (!generated) return;
+    setRegeneratingImg(true);
+    const finalPrompt = imagePrompt.trim() || generated.title;
+    // Generate high resolution photorealistic banner from Pollinations
+    const newUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(finalPrompt + ", professional DSLR photography, realistic, high resolution, detailed, studio lighting")}?width=1200&height=630&nologo=true&seed=${Math.floor(Math.random() * 100000)}`;
+    
+    setGenerated({
+      ...generated,
+      image: newUrl
+    });
+
+    setTimeout(() => {
+      setRegeneratingImg(false);
+      onToast("📸 Image updated successfully!");
+    }, 1500);
+  };
+
   const saveGenerated = () => {
     if (!generated) return;
     startSave(async () => {
-      await saveBlogAction({ ...generated });
-      onToast("Blog saved to MongoDB!");
-      setGenerated(null);
-      setTopic("");
+      const r = await saveBlogAction({ ...generated });
+      if (r.success) {
+        onToast("Blog saved to MongoDB!");
+        setGenerated(null);
+        setTopic("");
+      } else {
+        onToast(`Error saving: ${r.error}`);
+      }
     });
   };
 
   return (
     <div className="space-y-6">
+      {/* Trends widget */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6 shadow-sm">
+        <div className="flex justify-between items-center mb-4 pb-2 border-b">
+          <h3 className="font-bold text-[#0f172a] flex items-center gap-2 text-sm sm:text-base">
+            <Globe className="size-5 text-[#0ea5e9] animate-spin" style={{ animationDuration: '6s' }} />
+            🔥 Live Trending in Pakistan (Google Trends)
+          </h3>
+          <button
+            onClick={fetchTrends}
+            disabled={loadingTrends}
+            className="p-1.5 hover:bg-slate-50 border rounded-lg text-slate-500 disabled:opacity-50 transition-colors"
+            title="Refresh Trends"
+          >
+            <RefreshCw className={`size-4 ${loadingTrends ? "animate-spin" : ""}`} />
+          </button>
+        </div>
+
+        {loadingTrends ? (
+          <div className="flex items-center justify-center py-6 text-xs text-slate-400 gap-2">
+            <div className="size-4 border-2 border-sky-100 border-t-[#0ea5e9] rounded-full animate-spin" />
+            Scraping live search topics...
+          </div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {trends.map((trend, idx) => (
+              <button
+                key={idx}
+                onClick={() => setTopic(trend)}
+                disabled={generating}
+                className="px-3 py-1.5 bg-slate-50 border border-slate-100 rounded-xl text-xs font-semibold text-slate-700 hover:border-[#0ea5e9] hover:bg-sky-50 transition-all hover:text-[#0ea5e9]"
+              >
+                ⚡ {trend}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Main Generator Box */}
       <div className="bg-white border border-[var(--border)] rounded-2xl p-6 shadow-sm">
         <h3 className="font-bold text-[#0f172a] mb-1 flex items-center gap-2">
-          <Sparkles className="size-5 text-[#0ea5e9]" /> AI Blog Generator
+          <Sparkles className="size-5 text-[#0ea5e9]" /> Write Article using AI
         </h3>
-        <p className="text-sm text-slate-400 mb-5">Enter a topic and AI will write a full SEO blog (800+ words, HTML formatted)</p>
+        <p className="text-xs text-slate-400 mb-5">Enter topic or click a Google Trend above. Generates 1500+ words SEO-optimized HTML article.</p>
         <div className="flex gap-3">
           <input
             value={topic}
             onChange={(e) => setTopic(e.target.value)}
-            placeholder="e.g. Best Laptops Under 100000 in Pakistan 2026"
-            className="flex-1 px-4 py-3 border-2 border-[var(--border)] rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] transition-colors"
+            placeholder="e.g. Best Shipping Services in Pakistan for E-commerce Sellers"
+            className="flex-1 px-4 py-3 border-2 border-[var(--border)] rounded-xl text-sm focus:outline-none focus:border-[#0ea5e9] transition-colors font-medium text-slate-700"
           />
           <button onClick={() => generate(topic)} disabled={generating}
             className="px-5 py-3 rounded-xl bg-gradient-to-r from-[#0ea5e9] to-[#0284c7] text-white font-bold text-sm hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center gap-2 whitespace-nowrap">
-            <Sparkles className="size-4" /> {generating ? "Generating..." : "Generate"}
+            <Sparkles className="size-4" /> {generating ? "Writing..." : "Generate Post"}
           </button>
         </div>
         {generating && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-              <span>Generating SEO content with Groq AI...</span>
+              <span>Generating deep content (using high-accuracy Gemini Pro)...</span>
               <span>{progress}%</span>
             </div>
             <div className="h-2 rounded-full bg-[#f1f5f9] overflow-hidden">
@@ -675,29 +793,80 @@ function AITab({ onToast }: { onToast: (s: string) => void }) {
             </div>
           </div>
         )}
+        
+        {/* Generated Post Review & Edit Banner */}
         {generated && (
-          <div className="mt-5 p-4 bg-green-50 border border-green-200 rounded-xl">
-            <div className="flex justify-between items-start gap-3">
-              <div>
-                <div className="text-xs font-bold text-green-600 uppercase mb-1">✅ Ready to publish</div>
-                <div className="font-bold text-[#0f172a]">{generated.title}</div>
-                <div className="text-sm text-slate-500 mt-1">{generated.metaDescription}</div>
-                <div className="flex gap-1.5 flex-wrap mt-2">
-                  {generated.tags.map((t: string) => <span key={t} className="text-xs bg-[#e0f2fe] text-[#0c4a6e] px-2 py-0.5 rounded-full font-medium">{t}</span>)}
+          <div className="mt-6 border-t pt-6 space-y-6">
+            <div className="flex flex-wrap justify-between items-start gap-4">
+              <div className="flex-1 min-w-[200px]">
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  ✓ Successfully Generated
+                </span>
+                <h4 className="font-extrabold text-[#0f172a] text-lg mt-2 leading-snug">{generated.title}</h4>
+                <p className="text-slate-400 text-xs mt-1.5">{generated.metaDescription}</p>
+                <div className="flex gap-1.5 flex-wrap mt-3">
+                  {generated.tags.map((t: string) => (
+                    <span key={t} className="text-[10px] bg-[#e0f2fe] text-[#0c4a6e] px-2 py-0.5 rounded-full font-bold">
+                      {t}
+                    </span>
+                  ))}
                 </div>
               </div>
               <button onClick={saveGenerated} disabled={saving}
-                className="shrink-0 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-bold hover:bg-green-700 transition-colors disabled:opacity-60 flex items-center gap-2">
-                <Save className="size-4" /> {saving ? "Saving..." : "Save to DB"}
+                className="px-6 py-3.5 rounded-xl bg-emerald-500 text-white font-bold text-sm hover:bg-emerald-600 transition-colors disabled:opacity-60 flex items-center gap-2 shadow-lg shadow-emerald-100">
+                <Save className="size-4.5" /> {saving ? "Saving..." : "Publish Post & Save"}
               </button>
+            </div>
+
+            {/* Generated Banner Image & Prompt Customization */}
+            <div className="grid md:grid-cols-[1fr_260px] gap-6 p-5 bg-slate-50 border rounded-2xl">
+              <div className="space-y-4">
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  🏞️ Banner Image Prompt Customizer
+                </label>
+                <textarea
+                  value={imagePrompt}
+                  onChange={(e) => setImagePrompt(e.target.value)}
+                  className="w-full p-3 border-2 border-slate-200 rounded-xl text-xs focus:outline-none focus:border-[#0ea5e9] bg-white resize-none h-20 text-slate-700 font-medium leading-relaxed"
+                  placeholder="Describe your banner graphics (e.g. realistic box package, DSLR, warm lighting)"
+                />
+                <button
+                  onClick={handleRegenerateImage}
+                  disabled={regeneratingImg}
+                  className="px-4 py-2 border-2 border-[#0ea5e9]/20 hover:bg-sky-50 text-[#0ea5e9] rounded-xl text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <RefreshCw className={`size-3.5 ${regeneratingImg ? "animate-spin" : ""}`} /> 
+                  {regeneratingImg ? "Regenerating..." : "Regenerate Image Banner"}
+                </button>
+              </div>
+
+              {/* Banner Image Preview */}
+              <div className="aspect-[16/9] border rounded-xl overflow-hidden bg-white shadow-sm flex items-center justify-center relative group">
+                <img
+                  src={generated.image}
+                  alt="Generated Banner Graphic"
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                  <a
+                    href={generated.image}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="p-1.5 bg-white text-slate-700 rounded-lg shadow text-[10px] font-bold uppercase tracking-wider flex items-center gap-1"
+                  >
+                    <Maximize2 className="size-3" /> View Large
+                  </a>
+                </div>
+              </div>
             </div>
           </div>
         )}
       </div>
 
+      {/* Quick Topic Ideas */}
       <div className="bg-white border border-[var(--border)] rounded-2xl p-6 shadow-sm">
-        <h3 className="font-bold text-[#0f172a] mb-4 flex items-center gap-2">
-          <TrendingUp className="size-5 text-[#0ea5e9]" /> Quick Topic Ideas
+        <h3 className="font-bold text-[#0f172a] mb-4 flex items-center gap-2 text-sm sm:text-base">
+          <TrendingUp className="size-5 text-[#0ea5e9]" /> Pakistan Niche Ideas
         </h3>
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2">
           {NICHE_TOPICS.map((n) => (
