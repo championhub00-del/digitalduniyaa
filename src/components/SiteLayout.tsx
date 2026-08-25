@@ -40,10 +40,6 @@ export default function SiteLayout({ children, siteLogo }: SiteLayoutProps) {
     { href: "/", label: "Home" },
     { href: "/blog", label: "Blog" },
     { href: "/shop", label: "Shop" },
-    { href: "/calculator", label: "Calculator" },
-    { href: "/compressor", label: "Compressor" },
-    { href: "/pdf-tools", label: "PDF Tools" },
-    { href: "/background-remover", label: "BG Remover" },
     { href: "/about", label: "About" },
     { href: "/contact", label: "Contact" },
   ];

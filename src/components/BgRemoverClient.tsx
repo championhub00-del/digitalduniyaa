@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   Upload, Image as ImageIcon, Download, Trash2, AlertCircle,
-  CheckCircle2, Sparkles, RefreshCw, Info, HelpCircle
+  CheckCircle2, Sparkles, RefreshCw, Info, Scissors, Check, X
 } from "lucide-react";
 import AdSlot from "@/components/AdSlot";
 
@@ -15,6 +15,15 @@ export default function BgRemoverClient() {
   const [progressText, setProgressText] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string>("");
 
+  // AI model accuracy choices
+  const [modelType, setModelType] = useState<"isnet" | "isnet_quint8">("isnet");
+
+  // Eraser Touch-Up States
+  const [isTouchUp, setIsTouchUp] = useState<boolean>(false);
+  const [brushSize, setBrushSize] = useState<number>(20);
+  const [isDrawing, setIsDrawing] = useState<boolean>(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const selected = e.target.files[0];
@@ -25,6 +34,7 @@ export default function BgRemoverClient() {
       setFile(selected);
       setOriginalUrl(URL.createObjectURL(selected));
       setResultUrl("");
+      setIsTouchUp(false);
       setErrorMsg("");
     }
   };
@@ -34,12 +44,13 @@ export default function BgRemoverClient() {
     setProcessing(true);
     setProgressText("Initializing AI engine...");
     setErrorMsg("");
+    setIsTouchUp(false);
 
     try {
-      // Dynamically import the named export to avoid SSR loader issues
       const { removeBackground } = await import("@imgly/background-removal");
 
       const resultBlob = await removeBackground(file, {
+        model: modelType, // "isnet" for high-accuracy segmentation, "isnet_quint8" for speed
         progress: (key, current, total) => {
           const percentage = total > 0 ? Math.round((current / total) * 100) : 0;
           if (key.includes("fetch")) {
@@ -57,9 +68,110 @@ export default function BgRemoverClient() {
       setProcessing(false);
     } catch (err) {
       console.error("AI Background Removal Error:", err);
-      setErrorMsg("Failed to remove background. Ensure the image is clear and try again.");
+      setErrorMsg("Failed to remove background. Ensure the image has a clear subject and try again.");
       setProcessing(false);
     }
+  };
+
+  // --- ERASER TOUCH-UP logic ---
+  const handleStartTouchUp = () => {
+    if (!resultUrl) return;
+    setIsTouchUp(true);
+    // Give canvas a tick to mount
+    setTimeout(() => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        // Match canvas dimensions to the generated image size
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+      };
+      img.src = resultUrl;
+    }, 100);
+  };
+
+  const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+
+    let clientX = 0;
+    let clientY = 0;
+
+    if ("touches" in e) {
+      if (e.touches.length === 0) return null;
+      clientX = e.touches[0].clientX;
+      clientY = e.touches[0].clientY;
+    } else {
+      clientX = e.clientX;
+      clientY = e.clientY;
+    }
+
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY
+    };
+  };
+
+  const startDraw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    const coords = getCanvasCoords(e);
+    if (!coords) return;
+    setIsDrawing(true);
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (ctx) {
+      ctx.beginPath();
+      ctx.moveTo(coords.x, coords.y);
+      ctx.globalCompositeOperation = "destination-out"; // transparency drawing (erasing!)
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.lineWidth = brushSize * (canvas!.width / 400); // Scale brush relative to original image size
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
+    if (!isDrawing) return;
+    const coords = getCanvasCoords(e);
+    if (!coords) return;
+
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext("2d");
+    if (ctx) {
+      ctx.lineTo(coords.x, coords.y);
+      ctx.stroke();
+    }
+  };
+
+  const endDraw = () => {
+    setIsDrawing(false);
+  };
+
+  const handleSaveTouchUp = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.toBlob((blob) => {
+      if (blob) {
+        if (resultUrl) URL.revokeObjectURL(resultUrl);
+        const newUrl = URL.createObjectURL(blob);
+        setResultUrl(newUrl);
+        setIsTouchUp(false);
+      }
+    }, "image/png");
+  };
+
+  const handleCancelTouchUp = () => {
+    setIsTouchUp(false);
   };
 
   const handleDownload = () => {
@@ -79,6 +191,7 @@ export default function BgRemoverClient() {
     if (resultUrl) URL.revokeObjectURL(resultUrl);
     setOriginalUrl("");
     setResultUrl("");
+    setIsTouchUp(false);
     setProcessing(false);
     setProgressText("");
     setErrorMsg("");
@@ -148,6 +261,40 @@ export default function BgRemoverClient() {
                 </button>
               </div>
 
+              {/* Touch Up Editor Controls (Visible only when in touch-up mode) */}
+              {isTouchUp && (
+                <div className="p-4 bg-slate-50 border rounded-2xl flex flex-wrap items-center justify-between gap-4">
+                  <div className="flex items-center gap-4 flex-1 min-w-[200px]">
+                    <div className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-2">
+                      <Scissors className="size-3.5 text-[#0ea5e9]" /> Brush Size:
+                      <span className="text-[#0ea5e9]">{brushSize}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="60"
+                      value={brushSize}
+                      onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                      className="flex-1 accent-[#0ea5e9] h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCancelTouchUp}
+                      className="px-3 py-1.5 border rounded-lg text-xs font-semibold text-slate-600 bg-white hover:bg-slate-50 flex items-center gap-1"
+                    >
+                      <X className="size-3.5" /> Cancel
+                    </button>
+                    <button
+                      onClick={handleSaveTouchUp}
+                      className="px-3 py-1.5 bg-[#0ea5e9] text-white hover:bg-[#0284c7] rounded-lg text-xs font-bold flex items-center gap-1"
+                    >
+                      <Check className="size-3.5" /> Save Edits
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Grid showing Before / After */}
               <div className="grid sm:grid-cols-2 gap-6">
                 {/* Original (Before) */}
@@ -162,11 +309,11 @@ export default function BgRemoverClient() {
                   </div>
                 </div>
 
-                {/* Result (After) */}
+                {/* Result (After) / Interactive Canvas */}
                 <div className="space-y-2">
                   <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                    <span>Result</span>
-                    {resultUrl && (
+                    <span>{isTouchUp ? "Eraser Mode (Drag/Touch to Erase)" : "Result"}</span>
+                    {resultUrl && !isTouchUp && (
                       <span className="text-[10px] text-green-600 bg-green-50 px-2 py-0.5 rounded-full font-semibold border border-green-200">
                         Transparent
                       </span>
@@ -174,12 +321,35 @@ export default function BgRemoverClient() {
                   </span>
                   
                   <div className="aspect-square rounded-2xl border overflow-hidden flex items-center justify-center p-2 relative bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px]">
-                    {resultUrl ? (
-                      <img
-                        src={resultUrl}
-                        alt="Background Removed Result"
-                        className="max-w-full max-h-full object-contain rounded-lg animate-in fade-in zoom-in-95 duration-500"
+                    {isTouchUp ? (
+                      <canvas
+                        ref={canvasRef}
+                        onMouseDown={startDraw}
+                        onMouseMove={draw}
+                        onMouseUp={endDraw}
+                        onMouseLeave={endDraw}
+                        onTouchStart={startDraw}
+                        onTouchMove={draw}
+                        onTouchEnd={endDraw}
+                        className="max-w-full max-h-full object-contain rounded-lg border-2 border-dashed border-[#0ea5e9]/50 cursor-crosshair touch-none"
                       />
+                    ) : resultUrl ? (
+                      <div className="relative w-full h-full flex items-center justify-center group/result">
+                        <img
+                          src={resultUrl}
+                          alt="Background Removed Result"
+                          className="max-w-full max-h-full object-contain rounded-lg animate-in fade-in zoom-in-95 duration-500"
+                        />
+                        {/* Overlay Touch Up Trigger */}
+                        <div className="absolute inset-0 bg-black/40 rounded-lg flex items-center justify-center opacity-0 group-hover/result:opacity-100 transition-opacity">
+                          <button
+                            onClick={handleStartTouchUp}
+                            className="px-4 py-2 bg-white text-slate-800 text-xs font-bold rounded-lg shadow-lg flex items-center gap-1.5 hover:scale-105 transition-transform"
+                          >
+                            <Scissors className="size-4 text-[#0ea5e9]" /> Touch Up (Eraser)
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <div className="text-center text-slate-400 text-xs flex flex-col items-center gap-3 p-4">
                         {processing ? (
@@ -205,7 +375,7 @@ export default function BgRemoverClient() {
               {!resultUrl && !processing && (
                 <button
                   onClick={handleRemoveBackground}
-                  className="w-full py-4 bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+                  className="w-full py-4 bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 animate-none"
                 >
                   <Sparkles className="size-4" /> Remove Background (Start AI)
                 </button>
@@ -231,6 +401,26 @@ export default function BgRemoverClient() {
             Tool Controls
           </h3>
 
+          {/* Model Selection Dropdown (Only visible before processing or during restart) */}
+          {!resultUrl && !processing && (
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                AI Segmentation Quality
+              </label>
+              <select
+                value={modelType}
+                onChange={(e) => setModelType(e.target.value as "isnet" | "isnet_quint8")}
+                className="w-full px-3 py-2.5 border-2 border-slate-100 rounded-xl text-xs focus:outline-none focus:border-[#0ea5e9] bg-white font-semibold text-slate-700"
+              >
+                <option value="isnet">HD Premium (Accurate - Recommended)</option>
+                <option value="isnet_quint8">Standard (Fast - Lightweight)</option>
+              </select>
+              <span className="block text-[10px] text-slate-400 font-normal leading-snug">
+                HD mode uses the high-precision IS-Net neural network to outline fine details like hair or accessories.
+              </span>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="p-4 bg-rose-50 border border-rose-200 text-rose-600 rounded-2xl text-xs flex items-start gap-2">
               <AlertCircle className="size-4 shrink-0 mt-0.5" />
@@ -239,7 +429,7 @@ export default function BgRemoverClient() {
           )}
 
           {/* Download Action (if result exists) */}
-          {resultUrl ? (
+          {resultUrl && !isTouchUp ? (
             <div className="space-y-3">
               <div className="p-4 bg-green-50 border border-green-200 text-green-700 rounded-2xl text-xs flex items-start gap-2">
                 <CheckCircle2 className="size-4 shrink-0 mt-0.5" />
@@ -252,10 +442,34 @@ export default function BgRemoverClient() {
                 <Download className="size-4" /> Download High-Res PNG
               </button>
               <button
+                onClick={handleStartTouchUp}
+                className="w-full py-3 border-2 border-[#0ea5e9]/20 hover:bg-sky-50 text-[#0ea5e9] font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 bg-sky-50/10"
+              >
+                <Scissors className="size-4" /> Eraser / Touch Up (Touch Screen support)
+              </button>
+              <button
                 onClick={handleReset}
                 className="w-full py-3.5 border-2 border-slate-100 hover:bg-slate-50 text-slate-600 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 bg-white"
               >
                 <RefreshCw className="size-4" /> Start New Image
+              </button>
+            </div>
+          ) : resultUrl && isTouchUp ? (
+            <div className="space-y-3">
+              <div className="p-3 bg-amber-50 border border-amber-200 text-amber-700 rounded-2xl text-xs leading-relaxed">
+                🎨 <b>Eraser Instructions:</b> Click &amp; drag (or touch) over unwanted areas (like people in the background) to remove them. Click <b>Save Edits</b> when finished!
+              </div>
+              <button
+                onClick={handleSaveTouchUp}
+                className="w-full py-3.5 bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2"
+              >
+                <Check className="size-4" /> Save Touch Up
+              </button>
+              <button
+                onClick={handleCancelTouchUp}
+                className="w-full py-3.5 border-2 border-slate-100 hover:bg-slate-50 text-slate-600 font-bold text-sm rounded-xl transition-all flex items-center justify-center gap-2 bg-white"
+              >
+                <X className="size-4" /> Discard Touch Up
               </button>
             </div>
           ) : (

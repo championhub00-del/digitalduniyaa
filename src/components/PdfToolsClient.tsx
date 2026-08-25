@@ -17,8 +17,10 @@ interface FileDetails {
 
 export interface TextBox {
   id: string;
+  type?: "text" | "image";
   pageIndex: number;
   text: string;
+  imageSrc?: string;
   x: number;
   y: number;
   w: number;
@@ -154,7 +156,7 @@ export default function PdfToolsClient() {
     }
   }, [files, activeTool, pdfjsLoaded]);
 
-  const handleAddTextBox = (pageIndex: number, x: number, y: number) => {
+  const handleAddTextBox = (pageIndex: number, x: number, y: number, extra?: Partial<TextBox>) => {
     const newBox: TextBox = {
       id: Math.random().toString(36).substring(2, 9),
       pageIndex,
@@ -166,7 +168,8 @@ export default function PdfToolsClient() {
       fontSize: 16,
       color: "black",
       bgColor: "#ffffff", // default white mask to cover text underneath!
-      isBold: false
+      isBold: false,
+      ...extra
     };
     setTextBoxes((prev) => [...prev, newBox]);
   };
@@ -456,20 +459,37 @@ export default function PdfToolsClient() {
               });
             }
             
-            // Draw new styled text inside the rectangle, vertically centered with small padding
-            const selectedFont = box.isBold ? fontBold : fontNormal;
-            const [r, g, bColor] = getColorRgb(box.color);
-            
-            const textX = pdfX + 4; // 4pt left padding
-            const textY = pdfY + Math.max(2, (pdfHeight - box.fontSize) / 2);
-            
-            page.drawText(box.text, {
-              x: textX,
-              y: textY,
-              size: box.fontSize,
-              font: selectedFont,
-              color: rgb(r, g, bColor),
-            });
+            if (box.type === "image" && box.imageSrc) {
+              try {
+                const base64Data = box.imageSrc.split(",")[1];
+                const imageBytes = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+                const pdfImage = await pdfDoc.embedPng(imageBytes);
+                
+                page.drawImage(pdfImage, {
+                  x: pdfX,
+                  y: pdfY,
+                  width: pdfWidth,
+                  height: pdfHeight,
+                });
+              } catch (imgErr) {
+                console.error("Error embedding image overlay:", imgErr);
+              }
+            } else {
+              // Draw new styled text inside the rectangle, vertically centered with small padding
+              const selectedFont = box.isBold ? fontBold : fontNormal;
+              const [r, g, bColor] = getColorRgb(box.color);
+              
+              const textX = pdfX + 4; // 4pt left padding
+              const textY = pdfY + Math.max(2, (pdfHeight - box.fontSize) / 2);
+              
+              page.drawText(box.text || "", {
+                x: textX,
+                y: textY,
+                size: box.fontSize,
+                font: selectedFont,
+                color: rgb(r, g, bColor),
+              });
+            }
           }
           
           setProcessingStep("Compiling new PDF document...");
@@ -807,7 +827,7 @@ interface PageCanvasProps {
   pdf: any;
   pageIndex: number;
   textBoxes: TextBox[];
-  onAddTextBox: (pageIndex: number, x: number, y: number) => void;
+  onAddTextBox: (pageIndex: number, x: number, y: number, extra?: Partial<TextBox>) => void;
   onUpdateTextBox: (id: string, updates: Partial<TextBox>) => void;
   onDeleteTextBox: (id: string) => void;
 }
@@ -849,6 +869,35 @@ function PageCanvas({ pdf, pageIndex, textBoxes, onAddTextBox, onUpdateTextBox, 
     };
   }, [pdf, pageIndex]);
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.width;
+          canvas.height = img.height;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const pngUrl = canvas.toDataURL("image/png");
+            onAddTextBox(pageIndex, 20, 20, {
+              type: "image",
+              imageSrc: pngUrl,
+              w: 30, // default 30% width
+              h: 18, // default 18% height
+              bgColor: "transparent"
+            });
+          }
+        };
+        img.src = event.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target !== e.currentTarget) return; // Only trigger if click on overlay background
     const rect = e.currentTarget.getBoundingClientRect();
@@ -860,32 +909,57 @@ function PageCanvas({ pdf, pageIndex, textBoxes, onAddTextBox, onUpdateTextBox, 
   const pageBoxes = textBoxes.filter((b) => b.pageIndex === pageIndex);
 
   return (
-    <div className="relative border shadow-sm rounded-xl overflow-hidden bg-slate-100 max-w-full mb-6 mx-auto" style={{ width: canvasSize.w ? `${canvasSize.w}px` : "100%" }}>
-      <canvas ref={canvasRef} className="max-w-full h-auto block" />
-      
-      {/* Interactive Drag & Drop Text Overlay Layer */}
-      {!loadingPage && (
-        <div
-          onClick={handleOverlayClick}
-          className="absolute inset-0 cursor-text select-none"
-          style={{ width: "100%", height: "100%" }}
-        >
-          {pageBoxes.map((box) => (
-            <EditableTextBox
-              key={box.id}
-              box={box}
-              onUpdate={(updates) => onUpdateTextBox(box.id, updates)}
-              onDelete={() => onDeleteTextBox(box.id)}
+    <div className="border shadow-sm rounded-xl overflow-hidden bg-white max-w-full mb-6 mx-auto flex flex-col" style={{ width: canvasSize.w ? `${canvasSize.w}px` : "100%" }}>
+      {/* Page Header Toolbar */}
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-50 border-b text-xs text-slate-500 font-semibold select-none">
+        <span>Page {pageIndex + 1}</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => onAddTextBox(pageIndex, 15, 15)}
+            className="px-2 py-1 bg-sky-50 text-[#0ea5e9] hover:bg-sky-100 rounded border border-sky-100 flex items-center gap-1 font-bold transition-all animate-none shadow-none"
+          >
+            <Type className="size-3" /> Add Text
+          </button>
+          <label className="px-2 py-1 bg-violet-50 text-violet-600 hover:bg-violet-100 rounded border border-violet-100 flex items-center gap-1 font-bold cursor-pointer transition-all">
+            <ImageIcon className="size-3" /> Add Image
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
             />
-          ))}
+          </label>
         </div>
-      )}
-      
-      {loadingPage && (
-        <div className="absolute inset-0 bg-white/60 flex items-center justify-center min-h-[300px]">
-          <div className="size-6 border-2 border-[#0ea5e9]/30 border-t-[#0ea5e9] rounded-full animate-spin" />
-        </div>
-      )}
+      </div>
+
+      <div className="relative bg-slate-100 flex-1 w-full h-full">
+        <canvas ref={canvasRef} className="max-w-full h-auto block" />
+        
+        {/* Interactive Drag & Drop Text Overlay Layer */}
+        {!loadingPage && (
+          <div
+            onClick={handleOverlayClick}
+            className="absolute inset-0 cursor-text select-none"
+            style={{ width: "100%", height: "100%" }}
+          >
+            {pageBoxes.map((box) => (
+              <EditableTextBox
+                key={box.id}
+                box={box}
+                onUpdate={(updates) => onUpdateTextBox(box.id, updates)}
+                onDelete={() => onDeleteTextBox(box.id)}
+              />
+            ))}
+          </div>
+        )}
+        
+        {loadingPage && (
+          <div className="absolute inset-0 bg-white/60 flex items-center justify-center min-h-[300px]">
+            <div className="size-6 border-2 border-[#0ea5e9]/30 border-t-[#0ea5e9] rounded-full animate-spin" />
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1060,15 +1134,28 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
         title="Drag to reposition"
       />
 
-      <div className="flex-1 min-h-0 relative flex items-center">
-        {isEditing ? (
+      <div className="flex-1 min-h-0 relative flex items-center justify-center overflow-hidden">
+        {box.type === "image" ? (
+          <img
+            src={box.imageSrc}
+            alt="Overlay Graphic"
+            className="max-w-full max-h-full object-contain pointer-events-none"
+          />
+        ) : isEditing ? (
           <textarea
             autoFocus
             value={box.text}
             onChange={(e) => onUpdate({ text: e.target.value })}
             onBlur={() => setIsEditing(false)}
-            style={{ fontSize: `${box.fontSize}px` }}
-            className={`w-full h-full bg-transparent border-0 outline-none resize-none font-medium p-0 m-0 leading-tight focus:ring-0 ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
+            style={{
+              fontSize: `${box.fontSize}px`,
+              backgroundColor: "transparent",
+              border: "none",
+              outline: "none",
+              boxShadow: "none",
+              resize: "none"
+            }}
+            className={`w-full h-full bg-transparent border-0 outline-none resize-none font-medium p-0 m-0 leading-tight focus:ring-transparent focus:border-transparent focus:shadow-none focus:outline-none focus:bg-transparent ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
           />
         ) : (
           <div
@@ -1097,34 +1184,39 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
 
       {/* Floating properties overlay menu */}
       <div className={`absolute left-0 bottom-full mb-1.5 ${showMenu ? "flex" : "hidden"} group-hover:flex items-center gap-1.5 bg-[#0f172a] text-white p-1.5 rounded-lg shadow-xl text-[10px] z-30 whitespace-nowrap`}>
-        {/* Font size */}
-        <input
-          type="number"
-          value={box.fontSize}
-          onChange={(e) => onUpdate({ fontSize: Math.max(8, parseInt(e.target.value) || 12) })}
-          className="w-8 px-1 py-0.5 bg-slate-800 text-white rounded text-center border-0 outline-none text-[10px]"
-          title="Font Size (px)"
-        />
-        {/* Bold */}
-        <button
-          type="button"
-          onClick={() => onUpdate({ isBold: !box.isBold })}
-          className={`px-1.5 py-0.5 rounded font-bold ${box.isBold ? "bg-[#0ea5e9]" : "bg-slate-800 hover:bg-slate-700"}`}
-        >
-          B
-        </button>
-        {/* Color */}
-        <select
-          value={box.color}
-          onChange={(e) => onUpdate({ color: e.target.value })}
-          className="px-1.5 py-0.5 bg-slate-800 text-white rounded border-0 outline-none text-[9px]"
-        >
-          <option value="black">Black</option>
-          <option value="white">White</option>
-          <option value="red">Red</option>
-          <option value="blue">Blue</option>
-          <option value="green">Green</option>
-        </select>
+        {box.type !== "image" && (
+          <>
+            {/* Font size */}
+            <input
+              type="number"
+              value={box.fontSize}
+              onChange={(e) => onUpdate({ fontSize: Math.max(8, parseInt(e.target.value) || 12) })}
+              className="w-8 px-1 py-0.5 bg-slate-800 text-white rounded text-center border-0 outline-none text-[10px]"
+              title="Font Size (px)"
+            />
+            {/* Bold */}
+            <button
+              type="button"
+              onClick={() => onUpdate({ isBold: !box.isBold })}
+              className={`px-1.5 py-0.5 rounded font-bold ${box.isBold ? "bg-[#0ea5e9]" : "bg-slate-800 hover:bg-slate-700"}`}
+            >
+              B
+            </button>
+            {/* Color */}
+            <select
+              value={box.color}
+              onChange={(e) => onUpdate({ color: e.target.value })}
+              className="px-1.5 py-0.5 bg-slate-800 text-white rounded border-0 outline-none text-[9px]"
+            >
+              <option value="black">Black</option>
+              <option value="white">White</option>
+              <option value="red">Red</option>
+              <option value="blue">Blue</option>
+              <option value="green">Green</option>
+            </select>
+          </>
+        )}
+        
         {/* BG Mask */}
         <select
           value={["transparent", "#ffffff", "#f8fafc", "#e2e8f0", "#fef3c7", "#000000"].includes(box.bgColor) ? box.bgColor : "custom"}
@@ -1161,7 +1253,7 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
         )}
 
         {/* Delete */}
-        <button type="button" onClick={onDelete} className="p-1 bg-red-600 rounded hover:bg-red-700" title="Delete text box">
+        <button type="button" onClick={onDelete} className="p-1 bg-red-600 rounded hover:bg-red-700" title="Delete overlay box">
           <Trash2 className="size-3" />
         </button>
       </div>

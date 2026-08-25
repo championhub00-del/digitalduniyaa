@@ -382,57 +382,66 @@ export default async function HomePage() {
             </h2>
             <p className="text-slate-500 text-xs sm:text-sm">Real-time tools designed to make online work easier in Pakistan</p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
             {[
               {
-                title: "Shipping Rate Calculator",
-                desc: "Compare TCS, Leopard, M&P, and BlueEx rates across 90+ Pakistani cities instantly. Includes COD fee details.",
-                action: "Use Calculator",
+                title: "Shipping Calculator",
+                desc: "Compare TCS, Leopard, M&P, and BlueEx rates across 90+ Pakistani cities instantly. Includes COD fees.",
+                action: "Calculate Rates",
                 link: "/calculator",
                 badge: "Active",
                 badgeColor: "bg-emerald-100 text-emerald-700",
                 icon: Calculator
               },
               {
-                title: "Image Size Compressor",
-                desc: "Compress, resize, and convert JPEG, PNG, and WebP images online for free. 100% private, runs client-side in your browser.",
-                action: "Compress Images",
-                link: "/compressor",
+                title: "AI BG Remover",
+                desc: "Remove image backgrounds locally in HD quality. Touch up details with our precision eraser brush.",
+                action: "Remove BG",
+                link: "/background-remover",
+                badge: "AI Powered",
+                badgeColor: "bg-sky-100 text-sky-700",
+                icon: Sparkles
+              },
+              {
+                title: "AI Image Upscaler",
+                desc: "Increase photo dimensions and enhance resolution instantly for free. 100% private in-browser upscaling.",
+                action: "Upscale Image",
+                link: "/image-upscaler",
+                badge: "AI Powered",
+                badgeColor: "bg-sky-100 text-sky-700",
+                icon: Laptop
+              },
+              {
+                title: "Premium PDF Editor",
+                desc: "Merge, split, rotate, watermark PDFs, or place custom text and image overlays locally.",
+                action: "Edit PDF Files",
+                link: "/pdf-tools",
                 badge: "Active",
                 badgeColor: "bg-emerald-100 text-emerald-700",
                 icon: FileImage
               },
               {
-                title: "AdSense Earnings Estimator",
-                desc: "Calculate your potential daily and yearly blog earnings based on traffic metrics and category click values.",
-                action: "Coming Soon",
-                link: "#",
-                badge: "In Development",
-                badgeColor: "bg-blue-100 text-blue-700",
-                icon: Sparkles
-              },
-              {
-                title: "E-Commerce Profit Calculator",
-                desc: "Find net profit margins after subtracting sourcing costs, packaging, advertising budgets, and COD shipping fees.",
-                action: "Coming Soon",
-                link: "#",
-                badge: "In Development",
-                badgeColor: "bg-blue-100 text-blue-700",
-                icon: Laptop
+                title: "Image Compressor",
+                desc: "Compress, resize, and convert JPEG, PNG, and WebP images. Boost web load speed instantly.",
+                action: "Compress Image",
+                link: "/compressor",
+                badge: "Active",
+                badgeColor: "bg-emerald-100 text-emerald-700",
+                icon: FileImage
               }
             ].map((tool, idx) => (
-              <div key={idx} className="bg-white rounded-2xl border border-[var(--border)] p-6 shadow-sm flex flex-col justify-between group hover:border-[#0ea5e9] transition-all">
+              <div key={idx} className="bg-white rounded-2xl border border-[var(--border)] p-5 shadow-sm flex flex-col justify-between group hover:border-[#0ea5e9] transition-all">
                 <div>
                   <div className="flex justify-between items-start mb-4">
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${tool.badgeColor}`}>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${tool.badgeColor}`}>
                       {tool.badge}
                     </span>
-                    <tool.icon className="size-5 text-slate-400 group-hover:text-[#0ea5e9] transition-colors" />
+                    <tool.icon className="size-4.5 text-slate-400 group-hover:text-[#0ea5e9] transition-colors" />
                   </div>
-                  <h3 className="font-bold text-slate-800 text-base mb-2 group-hover:text-[#0ea5e9] transition-colors">
+                  <h3 className="font-bold text-slate-800 text-sm mb-2 group-hover:text-[#0ea5e9] transition-colors">
                     {tool.title}
                   </h3>
-                  <p className="text-slate-500 text-xs leading-relaxed mb-6">{tool.desc}</p>
+                  <p className="text-slate-500 text-[11px] leading-relaxed mb-6">{tool.desc}</p>
                 </div>
                 {tool.link !== "#" ? (
                   <Link
