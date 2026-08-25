@@ -787,7 +787,7 @@ function AITab({ onToast }: { onToast: (s: string) => void }) {
         {generating && (
           <div className="mt-4">
             <div className="flex justify-between text-xs text-slate-400 mb-1.5">
-              <span>Generating deep content (using high-accuracy Gemini Pro)...</span>
+              <span>Generating deep content (using high-accuracy Gemini)...</span>
               <span>{progress}%</span>
             </div>
             <div className="h-2 rounded-full bg-[#f1f5f9] overflow-hidden">

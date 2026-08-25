@@ -621,7 +621,7 @@ Return your output ONLY as a valid JSON object matching this schema (do NOT wrap
 
     if (geminiKey) {
       console.log("[actions.ts] generateBlogAction: Generating using Gemini API...");
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${geminiKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
