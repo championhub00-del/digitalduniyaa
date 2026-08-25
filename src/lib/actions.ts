@@ -684,3 +684,182 @@ Return your output ONLY as a valid JSON object matching this schema (do NOT wrap
     return { success: false, error: (err as Error).message };
   }
 }
+
+// ─── AI SEO Auditor Agent ──────────────────────────────────────────────────────
+export async function auditBlogPostAction(blogId: string) {
+  console.log("[actions.ts] auditBlogPostAction START for ID:", blogId);
+  try {
+    if (!(await isAdmin())) {
+      return { success: false, error: "Unauthorized" };
+    }
+    await connectToDatabase();
+    const blog = await Blog.findById(blogId).lean();
+    if (!blog) {
+      return { success: false, error: "Blog post not found." };
+    }
+
+    const settings = await getSettingsAction();
+    const geminiKey = settings.geminiKey || process.env.GEMINI_API_KEY || "";
+    const groqKey = settings.groqKey || process.env.GROQ_API_KEY || "";
+
+    if (!geminiKey && !groqKey) {
+      return { success: false, error: "Please configure your Gemini API Key or Groq API Key in Settings to activate the SEO Auditor Agent." };
+    }
+
+    const auditPrompt = `You are a high-level SEO Auditor & Monetization AI Agent specializing in Google AdSense optimization, SEO, and keyword indexing in Pakistan.
+Evaluate the following blog post parameters:
+Title: "${blog.title}"
+Meta Description: "${blog.metaDescription}"
+Tags/Keywords: "${(blog.tags || []).join(", ")}"
+HTML Content Length: ${blog.content ? blog.content.length : 0} characters.
+
+HTML Content:
+${blog.content}
+
+Analyze the SEO structure, keyword count, readability, headings, tables, callout cards, and suitability for ad monetization (Google AdSense high-paying ads).
+Identify how to rank better in Pakistan Google searches and how to gain traffic.
+
+Return ONLY a valid JSON object matching this schema (do NOT wrap it in any formatting tags, backticks or markdown):
+{
+  "seoScore": 85,
+  "monetizationPotential": "High",
+  "cpcKeywords": ["high cpc keyword 1", "high cpc keyword 2"],
+  "positives": ["positive point 1", "positive point 2"],
+  "improvements": ["improvement tip 1", "improvement tip 2"],
+  "adsensePlacementTips": ["tip on where to insert ad slot in this text 1", "tip 2"],
+  "rankSuggestions": ["heading suggestions or search intent matches 1", "tip 2"]
+}`;
+
+    let parsed: any;
+    if (geminiKey) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: auditPrompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `Gemini API status ${res.status}`);
+      }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      parsed = JSON.parse(text.trim());
+    } else {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: auditPrompt }],
+          max_tokens: 2000,
+          response_format: { type: "json_object" }
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `Groq API status ${res.status}`);
+      }
+      const text = data.choices?.[0]?.message?.content || "";
+      parsed = JSON.parse(text.trim());
+    }
+
+    console.log("[actions.ts] auditBlogPostAction SUCCESS");
+    return { success: true, audit: parsed };
+  } catch (err) {
+    console.error("[actions.ts] auditBlogPostAction ERROR:", err);
+    return { success: false, error: (err as Error).message };
+  }
+}
+
+export async function auditWholeWebsiteAction() {
+  console.log("[actions.ts] auditWholeWebsiteAction START");
+  try {
+    if (!(await isAdmin())) {
+      return { success: false, error: "Unauthorized" };
+    }
+    await connectToDatabase();
+    const blogCount = await Blog.countDocuments();
+    const settings = await getSettingsAction();
+    const subscriberCount = await Subscriber.countDocuments();
+    const commentsCount = await Comment.countDocuments();
+
+    const hasAdsenseId = !!settings.adsenseId;
+    const hasSiteLogo = !!settings.siteLogo;
+    const hasGeminiKey = !!settings.geminiKey;
+    const hasGroqKey = !!settings.groqKey;
+
+    const geminiKey = settings.geminiKey || process.env.GEMINI_API_KEY || "";
+    const groqKey = settings.groqKey || process.env.GROQ_API_KEY || "";
+
+    if (!geminiKey && !groqKey) {
+      return { success: false, error: "Please configure your Gemini API Key or Groq API Key in Settings to run the Website Audit Agent." };
+    }
+
+    const auditPrompt = `You are a professional website auditor AI Agent specialized in SEO, PageSpeed suggestions, Google AdSense eligibility, and digital monetization strategy in Pakistan.
+Run a site-wide review based on these parameters:
+Total Blog Posts: ${blogCount}
+Total Subscribers: ${subscriberCount}
+Total Comments: ${commentsCount}
+AdSense Publisher ID configured: ${hasAdsenseId ? "Yes" : "No"}
+Site Logo configured: ${hasSiteLogo ? "Yes" : "No"}
+Gemini Key configured: ${hasGeminiKey ? "Yes" : "No"}
+Groq Key configured: ${hasGroqKey ? "Yes" : "No"}
+Target Region: Pakistan (Local shipping calculators, tech resources, online business)
+
+Analyze what needs to be improved to make this site rank high on Google Pakistan searches, generate massive organic traffic, and earn thousands of dollars per month in AdSense ad revenue.
+
+Return ONLY a valid JSON object matching this schema (do NOT wrap it in any formatting tags, backticks or markdown):
+{
+  "rating": 82,
+  "status": "Ready for Adsense / Needs More Content / Optimized",
+  "seoGrade": "A" | "B" | "C" | "D",
+  "recommendations": ["reco 1", "reco 2"],
+  "trafficStrategies": ["traffic tip 1", "traffic tip 2"],
+  "adsenseReadinessFeedback": "feedback text here",
+  "monetizationTuning": ["monetization tip 1", "monetization tip 2"]
+}`;
+
+    let parsed: any;
+    if (geminiKey) {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: auditPrompt }] }],
+          generationConfig: { responseMimeType: "application/json" }
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `Gemini API status ${res.status}`);
+      }
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+      parsed = JSON.parse(text.trim());
+    } else {
+      const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${groqKey}` },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
+          messages: [{ role: "user", content: auditPrompt }],
+          max_tokens: 2000,
+          response_format: { type: "json_object" }
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.error?.message || `Groq API status ${res.status}`);
+      }
+      const text = data.choices?.[0]?.message?.content || "";
+      parsed = JSON.parse(text.trim());
+    }
+
+    console.log("[actions.ts] auditWholeWebsiteAction SUCCESS");
+    return { success: true, audit: parsed };
+  } catch (err) {
+    console.error("[actions.ts] auditWholeWebsiteAction ERROR:", err);
+    return { success: false, error: (err as Error).message };
+  }
+}

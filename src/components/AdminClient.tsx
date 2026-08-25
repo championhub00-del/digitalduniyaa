@@ -5,7 +5,7 @@ import {
   loginAction, logoutAction, checkAdminAction, getBlogsAction, saveBlogAction, deleteBlogAction,
   generateBlogAction, getAllCommentsAction, deleteCommentAction, toggleCommentAction,
   getEarningsAction, getAllEarningsAction, saveEarningsAction, getSettingsAction, saveSettingsAction,
-  getGoogleTrendsAction,
+  getGoogleTrendsAction, auditBlogPostAction, auditWholeWebsiteAction,
   type BlogData, type CommentData,
 } from "@/lib/actions";
 import { ProductsTab, OrdersTab } from "./AdminShop";
@@ -15,10 +15,10 @@ import {
   LayoutDashboard, FileText, TrendingUp, DollarSign, Settings as SettingsIcon,
   LogOut, Plus, Pencil, Trash2, RefreshCw, Sparkles, CheckCircle2, XCircle,
   MessageCircle, Eye, EyeOff, Save, Upload, X, Package, ShoppingBag, CreditCard,
-  Globe, Image as ImageIcon, Maximize2
+  Globe, Image as ImageIcon, Maximize2, ShieldCheck, Award
 } from "lucide-react";
 
-type Tab = "dashboard" | "blogs" | "ai" | "comments" | "earnings" | "products" | "orders" | "payments" | "settings";
+type Tab = "dashboard" | "blogs" | "ai" | "comments" | "earnings" | "products" | "orders" | "payments" | "settings" | "seo-agent";
 
 type Blog = BlogData;
 type Comment = CommentData;
@@ -128,6 +128,7 @@ export default function AdminClient() {
     { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="size-4" /> },
     { id: "blogs", label: "Blogs", icon: <FileText className="size-4" /> },
     { id: "ai", label: "AI Generator", icon: <Sparkles className="size-4" /> },
+    { id: "seo-agent", label: "SEO AI Agent", icon: <ShieldCheck className="size-4" /> },
     { id: "products", label: "Products", icon: <Package className="size-4" /> },
     { id: "orders", label: "Orders", icon: <ShoppingBag className="size-4" /> },
     { id: "comments", label: "Comments", icon: <MessageCircle className="size-4" /> },
@@ -190,6 +191,7 @@ export default function AdminClient() {
             {tab === "dashboard" && <DashboardTab />}
             {tab === "blogs" && <BlogsTab onToast={showToast} />}
             {tab === "ai" && <AITab onToast={showToast} />}
+            {tab === "seo-agent" && <SEOAgentTab onToast={showToast} />}
             {tab === "products" && <ProductsTab onToast={showToast} />}
             {tab === "orders" && <OrdersTab onToast={showToast} />}
             {tab === "comments" && <CommentsTab onToast={showToast} />}
@@ -877,6 +879,265 @@ function AITab({ onToast }: { onToast: (s: string) => void }) {
             </button>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── SEO AI Auditor Agent Tab ─── */
+function SEOAgentTab({ onToast }: { onToast: (s: string) => void }) {
+  const [blogs, setBlogs] = useState<Blog[]>([]);
+  const [selectedBlogId, setSelectedBlogId] = useState("");
+  const [auditingPost, setAuditingPost] = useState(false);
+  const [postAudit, setPostAudit] = useState<any>(null);
+
+  const [auditingSite, setAuditingSite] = useState(false);
+  const [siteAudit, setSiteAudit] = useState<any>(null);
+
+  useEffect(() => {
+    getBlogsAction().then((res) => {
+      setBlogs(res);
+      if (res.length > 0) setSelectedBlogId(res[0]._id);
+    });
+  }, []);
+
+  const handleAuditPost = async () => {
+    if (!selectedBlogId) {
+      onToast("Select a blog post first.");
+      return;
+    }
+    setAuditingPost(true);
+    setPostAudit(null);
+    const res = await auditBlogPostAction(selectedBlogId);
+    setAuditingPost(false);
+    if (res.success && res.audit) {
+      setPostAudit(res.audit);
+      onToast("✅ Blog SEO Audit Completed!");
+    } else {
+      onToast(`Error: ${res.error}`);
+    }
+  };
+
+  const handleAuditSite = async () => {
+    setAuditingSite(true);
+    setSiteAudit(null);
+    const res = await auditWholeWebsiteAction();
+    setAuditingSite(false);
+    if (res.success && res.audit) {
+      setSiteAudit(res.audit);
+      onToast("✅ Site-Wide SEO & AdSense Audit Completed!");
+    } else {
+      onToast(`Error: ${res.error}`);
+    }
+  };
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-8 items-start">
+      {/* Site Audit Column */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-6">
+        <div className="border-b pb-3">
+          <h3 className="font-extrabold text-[#0f172a] text-lg flex items-center gap-2">
+            <Award className="size-5 text-[#0ea5e9]" /> Website SEO & AdSense Audit
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">Audit the entire website's metrics, AdSense eligibility, and traffic growth index</p>
+        </div>
+
+        <button
+          onClick={handleAuditSite}
+          disabled={auditingSite}
+          className="w-full py-3 bg-gradient-to-r from-[#0ea5e9] to-[#0284c7] hover:opacity-90 text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-60"
+        >
+          <RefreshCw className={`size-4 ${auditingSite ? "animate-spin" : ""}`} />
+          {auditingSite ? "Auditing Website..." : "Run Full Website Health Check"}
+        </button>
+
+        {siteAudit && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Score Ring */}
+            <div className="flex items-center gap-5 p-4 bg-slate-50 border rounded-2xl">
+              <div className="size-20 rounded-full border-4 border-[#0ea5e9] flex flex-col items-center justify-center bg-white shrink-0 shadow-sm">
+                <span className="text-2xl font-extrabold text-[#0f172a]">{siteAudit.rating}</span>
+                <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider">Score</span>
+              </div>
+              <div className="space-y-1">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Site Grade</div>
+                <div className="text-lg font-extrabold text-[#0f172a] flex items-center gap-1.5">
+                  <span className="text-[#0ea5e9] text-2xl font-black">{siteAudit.seoGrade}</span>
+                  <span className="text-xs text-slate-500 font-medium">— {siteAudit.status}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* AdSense Feedback Box */}
+            <div className="p-4 bg-sky-50/50 border border-sky-100 rounded-2xl space-y-2">
+              <div className="text-xs font-bold text-[#0ea5e9] uppercase tracking-wider flex items-center gap-1">
+                <Sparkles className="size-3.5" /> AdSense Earning Feedback:
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                {siteAudit.adsenseReadinessFeedback}
+              </p>
+            </div>
+
+            {/* Recommendations List */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Key Action Items</span>
+              <div className="space-y-2">
+                {siteAudit.recommendations.map((r: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-[#0ea5e9] font-bold mt-0.5">•</span>
+                    <span className="font-medium">{r}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Traffic Strategies */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Traffic & Niche Strategies</span>
+              <div className="space-y-2">
+                {siteAudit.trafficStrategies.map((s: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-amber-500 font-bold mt-0.5">⚡</span>
+                    <span className="font-medium">{s}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Monetization Tuning */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Ad Placement & Revenue Boost</span>
+              <div className="space-y-2">
+                {siteAudit.monetizationTuning.map((t: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-green-500 font-bold mt-0.5">✓</span>
+                    <span className="font-medium">{t}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Blog Audit Column */}
+      <div className="bg-white border border-[var(--border)] rounded-2xl p-6 shadow-sm space-y-6">
+        <div className="border-b pb-3">
+          <h3 className="font-extrabold text-[#0f172a] text-lg flex items-center gap-2">
+            <ShieldCheck className="size-5 text-[#0ea5e9]" /> Blog SEO Auditor & Rank Advisor
+          </h3>
+          <p className="text-xs text-slate-400 mt-1">Audit individual articles for keyword density, CPC potential, and ranking criteria</p>
+        </div>
+
+        {blogs.length === 0 ? (
+          <div className="p-4 border border-dashed rounded-xl text-center text-xs text-slate-400">
+            No blogs available in the database yet. Write some using the AI Generator first!
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Select Blog Post</label>
+              <select
+                value={selectedBlogId}
+                onChange={(e) => setSelectedBlogId(e.target.value)}
+                className="w-full px-3 py-2.5 border-2 border-slate-100 rounded-xl text-xs focus:outline-none focus:border-[#0ea5e9] bg-white font-semibold text-slate-700"
+              >
+                {blogs.map((b) => (
+                  <option key={b._id} value={b._id}>{b.title}</option>
+                ))}
+              </select>
+            </div>
+
+            <button
+              onClick={handleAuditPost}
+              disabled={auditingPost}
+              className="w-full py-3 bg-[#0ea5e9] hover:bg-[#0284c7] text-white font-bold text-sm rounded-xl transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-60"
+            >
+              <Sparkles className={`size-4 ${auditingPost ? "animate-spin" : ""}`} />
+              {auditingPost ? "Auditing Post..." : "Audit Selected Post"}
+            </button>
+          </div>
+        )}
+
+        {postAudit && (
+          <div className="space-y-6 animate-in fade-in duration-300 border-t pt-6">
+            {/* Post Score & CPC potential */}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 border rounded-2xl text-center">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">SEO Score</div>
+                <div className="text-3xl font-black text-[#0f172a]">{postAudit.seoScore}<span className="text-xs text-slate-400 font-bold">/100</span></div>
+              </div>
+              <div className="p-4 bg-slate-50 border rounded-2xl text-center">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">CPC Potential</div>
+                <div className="text-lg font-black text-emerald-600 mt-1.5 uppercase">{postAudit.monetizationPotential}</div>
+              </div>
+            </div>
+
+            {/* Positives */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">SEO Strengths (What is Good)</span>
+              <div className="space-y-2">
+                {postAudit.positives.map((p: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-emerald-500 font-bold mt-0.5">✓</span>
+                    <span className="font-medium">{p}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Improvements */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Rank Advices & Improvements</span>
+              <div className="space-y-2">
+                {postAudit.improvements.map((imp: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-red-500 font-bold mt-0.5">•</span>
+                    <span className="font-medium">{imp}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* CPC Keywords to Target */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">High CPC Niche Keywords to Add</span>
+              <div className="flex flex-wrap gap-1.5">
+                {postAudit.cpcKeywords.map((k: string, idx: number) => (
+                  <span key={idx} className="text-[10px] px-2.5 py-1 bg-green-50 border border-green-200 text-green-700 rounded-full font-bold">
+                    💵 {k}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* AdSense Placement Tips */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Ad Placement Suggestions</span>
+              <div className="space-y-2">
+                {postAudit.adsensePlacementTips.map((tip: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-[#0ea5e9] font-bold mt-0.5">ℹ</span>
+                    <span className="font-medium">{tip}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Rank Suggestions */}
+            <div className="space-y-3">
+              <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Search Intent Match Suggestions</span>
+              <div className="space-y-2">
+                {postAudit.rankSuggestions.map((s: string, idx: number) => (
+                  <div key={idx} className="flex gap-2 text-xs text-slate-600 leading-relaxed items-start">
+                    <span className="text-amber-500 font-bold mt-0.5">⚡</span>
+                    <span className="font-medium">{s}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -86,7 +86,7 @@ export default function SiteLayout({ children, siteLogo }: SiteLayoutProps) {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 shrink-0">
             {siteLogo ? (
-              <img src={siteLogo} alt="DigitalDuniya" className="h-10 w-auto" />
+              <img src={siteLogo} alt="DigitalDuniya" className="h-12 w-auto object-contain" />
             ) : (
               <span className="font-extrabold text-xl tracking-tight">
                 <span className="text-[#0ea5e9]">Digital</span>
