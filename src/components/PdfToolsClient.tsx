@@ -21,10 +21,29 @@ export interface TextBox {
   text: string;
   x: number;
   y: number;
+  w: number;
+  h: number;
   fontSize: number;
   color: string;
   bgColor: string;
   isBold: boolean;
+}
+
+/* Helper to parse hexadecimal colors to rgb scale (0-1) */
+function parseHexColor(hex: string): [number, number, number] {
+  const clean = hex.replace("#", "").trim();
+  if (clean.length === 3) {
+    const r = parseInt(clean[0] + clean[0], 16) / 255;
+    const g = parseInt(clean[1] + clean[1], 16) / 255;
+    const b = parseInt(clean[2] + clean[2], 16) / 255;
+    return [r, g, b];
+  } else if (clean.length === 6) {
+    const r = parseInt(clean.substring(0, 2), 16) / 255;
+    const g = parseInt(clean.substring(2, 4), 16) / 255;
+    const b = parseInt(clean.substring(4, 6), 16) / 255;
+    return [r, g, b];
+  }
+  return [1, 1, 1]; // fallback to white
 }
 
 export default function PdfToolsClient() {
@@ -142,9 +161,11 @@ export default function PdfToolsClient() {
       text: "Edit text here",
       x,
       y,
+      w: 18, // 18% width
+      h: 4.5, // 4.5% height
       fontSize: 16,
       color: "black",
-      bgColor: "white", // default white mask to cover text underneath!
+      bgColor: "#ffffff", // default white mask to cover text underneath!
       isBold: false
     };
     setTextBoxes((prev) => [...prev, newBox]);
@@ -417,35 +438,34 @@ export default function PdfToolsClient() {
             const page = pages[box.pageIndex];
             const { width: pWidth, height: pHeight } = page.getSize();
             
-            // Map percentages to PDF dimensions. Subtract font height to align correctly.
+            // Map percentages to PDF dimensions.
+            const pdfWidth = (box.w / 100) * pWidth;
+            const pdfHeight = (box.h / 100) * pHeight;
             const pdfX = (box.x / 100) * pWidth;
-            const pdfY = (1 - (box.y / 100)) * pHeight - (box.fontSize * 0.82);
+            const pdfY = (1 - ((box.y + box.h) / 100)) * pHeight;
             
             // Draw background rectangle mask to cover/white-out the old text under the box
             if (box.bgColor !== "transparent") {
-              let fillRgb = rgb(1, 1, 1); // default white
-              if (box.bgColor === "yellow") fillRgb = rgb(0.98, 0.98, 0.7);
-              if (box.bgColor === "gray") fillRgb = rgb(0.9, 0.9, 0.9);
-              
-              const rectHeight = box.fontSize * 1.25;
-              const rectWidth = Math.max(60, box.text.length * box.fontSize * 0.58);
-              
+              const [r, g, bColor] = parseHexColor(box.bgColor);
               page.drawRectangle({
                 x: pdfX,
-                y: pdfY - 2,
-                width: rectWidth,
-                height: rectHeight,
-                color: fillRgb,
+                y: pdfY,
+                width: pdfWidth,
+                height: pdfHeight,
+                color: rgb(r, g, bColor),
               });
             }
             
-            // Draw new styled text
+            // Draw new styled text inside the rectangle, vertically centered with small padding
             const selectedFont = box.isBold ? fontBold : fontNormal;
             const [r, g, bColor] = getColorRgb(box.color);
             
+            const textX = pdfX + 4; // 4pt left padding
+            const textY = pdfY + Math.max(2, (pdfHeight - box.fontSize) / 2);
+            
             page.drawText(box.text, {
-              x: pdfX,
-              y: pdfY,
+              x: textX,
+              y: textY,
               size: box.fontSize,
               font: selectedFont,
               color: rgb(r, g, bColor),
@@ -869,7 +889,6 @@ function PageCanvas({ pdf, pageIndex, textBoxes, onAddTextBox, onUpdateTextBox, 
     </div>
   );
 }
-
 /* ─── Editable Draggable Text Box Component ─── */
 interface EditableTextBoxProps {
   box: TextBox;
@@ -880,6 +899,8 @@ interface EditableTextBoxProps {
 function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [dragStart, setDragStart] = useState<{ x: number; y: number } | null>(null);
+  const [resizeStart, setResizeStart] = useState<{ x: number; y: number; startW: number; startH: number } | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (isEditing) return; // Don't drag while editing text
@@ -887,36 +908,116 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
     setDragStart({ x: e.clientX, y: e.clientY });
   };
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (isEditing) return;
+    const touch = e.touches[0];
+    setDragStart({ x: touch.clientX, y: touch.clientY });
+  };
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizeStart({ x: e.clientX, y: e.clientY, startW: box.w, startH: box.h });
+  };
+
+  const handleTouchResizeStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    const touch = e.touches[0];
+    setResizeStart({ x: touch.clientX, y: touch.clientY, startW: box.w, startH: box.h });
+  };
+
   const handleMouseMove = (e: MouseEvent) => {
-    if (!dragStart) return;
-    const dx = e.clientX - dragStart.x;
-    const dy = e.clientY - dragStart.y;
-    
-    const parent = document.getElementById(`overlay-${box.id}`)?.parentElement;
-    if (!parent) return;
-    const parentRect = parent.getBoundingClientRect();
-    
-    const newX = Math.max(0, Math.min(95, box.x + (dx / parentRect.width) * 100));
-    const newY = Math.max(0, Math.min(95, box.y + (dy / parentRect.height) * 100));
-    
-    onUpdate({ x: newX, y: newY });
-    setDragStart({ x: e.clientX, y: e.clientY });
+    if (dragStart) {
+      const dx = e.clientX - dragStart.x;
+      const dy = e.clientY - dragStart.y;
+      
+      const parent = document.getElementById(`overlay-${box.id}`)?.parentElement;
+      if (!parent) return;
+      const parentRect = parent.getBoundingClientRect();
+      
+      const newX = Math.max(0, Math.min(99, box.x + (dx / parentRect.width) * 100));
+      const newY = Math.max(0, Math.min(99, box.y + (dy / parentRect.height) * 100));
+      
+      onUpdate({ x: newX, y: newY });
+      setDragStart({ x: e.clientX, y: e.clientY });
+    }
+    else if (resizeStart) {
+      const dx = e.clientX - resizeStart.x;
+      const dy = e.clientY - resizeStart.y;
+      
+      const parent = document.getElementById(`overlay-${box.id}`)?.parentElement;
+      if (!parent) return;
+      const parentRect = parent.getBoundingClientRect();
+      
+      const newW = Math.max(1, Math.min(100 - box.x, resizeStart.startW + (dx / parentRect.width) * 100));
+      const newH = Math.max(0.5, Math.min(100 - box.y, resizeStart.startH + (dy / parentRect.height) * 100));
+      
+      onUpdate({ w: newW, h: newH });
+    }
+  };
+
+  const handleTouchMove = (e: TouchEvent) => {
+    const touch = e.touches[0];
+    if (dragStart) {
+      const dx = touch.clientX - dragStart.x;
+      const dy = touch.clientY - dragStart.y;
+      
+      const parent = document.getElementById(`overlay-${box.id}`)?.parentElement;
+      if (!parent) return;
+      const parentRect = parent.getBoundingClientRect();
+      
+      const newX = Math.max(0, Math.min(99, box.x + (dx / parentRect.width) * 100));
+      const newY = Math.max(0, Math.min(99, box.y + (dy / parentRect.height) * 100));
+      
+      onUpdate({ x: newX, y: newY });
+      setDragStart({ x: touch.clientX, y: touch.clientY });
+    }
+    else if (resizeStart) {
+      const dx = touch.clientX - resizeStart.x;
+      const dy = touch.clientY - resizeStart.y;
+      
+      const parent = document.getElementById(`overlay-${box.id}`)?.parentElement;
+      if (!parent) return;
+      const parentRect = parent.getBoundingClientRect();
+      
+      const newW = Math.max(1, Math.min(100 - box.x, resizeStart.startW + (dx / parentRect.width) * 100));
+      const newH = Math.max(0.5, Math.min(100 - box.y, resizeStart.startH + (dy / parentRect.height) * 100));
+      
+      onUpdate({ w: newW, h: newH });
+    }
   };
 
   const handleMouseUp = () => {
     setDragStart(null);
+    setResizeStart(null);
   };
 
   useEffect(() => {
-    if (dragStart) {
+    if (dragStart || resizeStart) {
       window.addEventListener("mousemove", handleMouseMove);
       window.addEventListener("mouseup", handleMouseUp);
+      window.addEventListener("touchmove", handleTouchMove, { passive: false });
+      window.addEventListener("touchend", handleMouseUp);
     }
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("touchmove", handleTouchMove);
+      window.removeEventListener("touchend", handleMouseUp);
     };
-  }, [dragStart]);
+  }, [dragStart, resizeStart]);
+
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowMenu(false);
+    };
+    window.addEventListener("click", handleClickOutside);
+    window.addEventListener("touchstart", handleClickOutside);
+    return () => {
+      window.removeEventListener("click", handleClickOutside);
+      window.removeEventListener("touchstart", handleClickOutside);
+    };
+  }, []);
 
   const colors = {
     black: "text-black",
@@ -926,54 +1027,76 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
     white: "text-white"
   };
 
-  const bgColors = {
-    white: "bg-white border-slate-300",
-    transparent: "bg-transparent border-transparent",
-    yellow: "bg-yellow-100 border-yellow-300",
-    gray: "bg-slate-100 border-slate-300"
+  const getBgStyle = () => {
+    if (box.bgColor === "transparent") return "bg-transparent border-dashed border-slate-300";
+    if (box.bgColor.startsWith("#")) {
+      return `border-slate-300`;
+    }
+    return "bg-white border-slate-300";
   };
 
   return (
     <div
       id={`overlay-${box.id}`}
+      onClick={(e) => {
+        e.stopPropagation();
+        setShowMenu(true);
+      }}
       style={{
         position: "absolute",
         left: `${box.x}%`,
         top: `${box.y}%`,
-        minWidth: "60px",
-        minHeight: "24px"
+        width: `${box.w}%`,
+        height: `${box.h}%`,
+        backgroundColor: box.bgColor !== "transparent" && box.bgColor.startsWith("#") ? box.bgColor : undefined
       }}
-      className={`border rounded p-1 flex flex-col group z-20 shadow-sm ${bgColors[box.bgColor as keyof typeof bgColors]}`}
+      className={`border rounded p-1 flex flex-col group z-20 shadow-sm ${getBgStyle()}`}
     >
       {/* Small drag bar */}
       <div
         onMouseDown={handleMouseDown}
-        className="cursor-move h-1.5 bg-[#0ea5e9]/20 rounded-sm mb-1 group-hover:bg-[#0ea5e9]/40 transition-all"
+        onTouchStart={handleTouchStart}
+        className="cursor-move h-1.5 bg-[#0ea5e9]/20 rounded-sm mb-1 group-hover:bg-[#0ea5e9]/40 transition-all shrink-0"
         title="Drag to reposition"
       />
 
-      {isEditing ? (
-        <textarea
-          autoFocus
-          value={box.text}
-          onChange={(e) => onUpdate({ text: e.target.value })}
-          onBlur={() => setIsEditing(false)}
-          style={{ fontSize: `${box.fontSize}px` }}
-          className={`w-full h-full bg-transparent border-0 outline-none resize-none font-medium p-0 m-0 leading-tight focus:ring-0 ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
-        />
-      ) : (
-        <div
-          onDoubleClick={() => setIsEditing(true)}
-          style={{ fontSize: `${box.fontSize}px` }}
-          className={`w-full min-h-[16px] pr-4 whitespace-pre-wrap select-all font-medium leading-tight cursor-text ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
-          title="Double click to edit text"
-        >
-          {box.text || <span className="text-slate-400 italic text-[10px]">Double click to type</span>}
-        </div>
-      )}
+      <div className="flex-1 min-h-0 relative flex items-center">
+        {isEditing ? (
+          <textarea
+            autoFocus
+            value={box.text}
+            onChange={(e) => onUpdate({ text: e.target.value })}
+            onBlur={() => setIsEditing(false)}
+            style={{ fontSize: `${box.fontSize}px` }}
+            className={`w-full h-full bg-transparent border-0 outline-none resize-none font-medium p-0 m-0 leading-tight focus:ring-0 ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
+          />
+        ) : (
+          <div
+            onDoubleClick={() => setIsEditing(true)}
+            onTouchStart={(e) => {
+              if (showMenu) {
+                setIsEditing(true);
+              }
+            }}
+            style={{ fontSize: `${box.fontSize}px` }}
+            className={`w-full max-h-full overflow-hidden whitespace-pre-wrap select-all font-medium leading-tight cursor-text ${box.isBold ? "font-bold" : ""} ${colors[box.color as keyof typeof colors]}`}
+            title="Double click to edit text"
+          >
+            {box.text || <span className="text-slate-400 italic text-[10px]">Double click</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Resize Handle at bottom right */}
+      <div
+        onMouseDown={handleResizeStart}
+        onTouchStart={handleTouchResizeStart}
+        className="absolute bottom-0 right-0 w-3.5 h-3.5 cursor-se-resize bg-[#0ea5e9]/30 hover:bg-[#0ea5e9] rounded-br-sm opacity-50 group-hover:opacity-100 transition-opacity"
+        title="Drag to resize box"
+      />
 
       {/* Floating properties overlay menu */}
-      <div className="absolute left-0 bottom-full mb-1.5 hidden group-hover:flex items-center gap-1.5 bg-[#0f172a] text-white p-1.5 rounded-lg shadow-xl text-[10px] z-30 whitespace-nowrap">
+      <div className={`absolute left-0 bottom-full mb-1.5 ${showMenu ? "flex" : "hidden"} group-hover:flex items-center gap-1.5 bg-[#0f172a] text-white p-1.5 rounded-lg shadow-xl text-[10px] z-30 whitespace-nowrap`}>
         {/* Font size */}
         <input
           type="number"
@@ -1004,16 +1127,39 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
         </select>
         {/* BG Mask */}
         <select
-          value={box.bgColor}
-          onChange={(e) => onUpdate({ bgColor: e.target.value })}
+          value={["transparent", "#ffffff", "#f8fafc", "#e2e8f0", "#fef3c7", "#000000"].includes(box.bgColor) ? box.bgColor : "custom"}
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val === "custom") {
+              onUpdate({ bgColor: "#ffffff" });
+            } else {
+              onUpdate({ bgColor: val });
+            }
+          }}
           className="px-1.5 py-0.5 bg-slate-800 text-white rounded border-0 outline-none text-[9px]"
           title="Background Fill"
         >
-          <option value="white">White Mask</option>
+          <option value="#ffffff">White Mask</option>
           <option value="transparent">Transparent</option>
-          <option value="yellow">Yellow</option>
-          <option value="gray">Gray</option>
+          <option value="#f8fafc">Off-White</option>
+          <option value="#e2e8f0">Light Gray</option>
+          <option value="#fef3c7">Cream</option>
+          <option value="#000000">Black</option>
+          <option value="custom">Custom Hex...</option>
         </select>
+
+        {/* Custom hex input */}
+        {!["transparent", "#ffffff", "#f8fafc", "#e2e8f0", "#fef3c7", "#000000"].includes(box.bgColor) && (
+          <input
+            type="text"
+            value={box.bgColor}
+            onChange={(e) => onUpdate({ bgColor: e.target.value })}
+            className="w-12 px-1 py-0.5 bg-slate-800 text-white rounded text-center border-0 outline-none text-[9px] font-mono"
+            placeholder="#ffffff"
+            title="Enter Hex Color Code"
+          />
+        )}
+
         {/* Delete */}
         <button type="button" onClick={onDelete} className="p-1 bg-red-600 rounded hover:bg-red-700" title="Delete text box">
           <Trash2 className="size-3" />
@@ -1022,3 +1168,4 @@ function EditableTextBox({ box, onUpdate, onDelete }: EditableTextBoxProps) {
     </div>
   );
 }
+
