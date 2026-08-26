@@ -219,43 +219,67 @@ export async function getDownloadUrlAction(token: string) {
 export async function seedProductsIfEmpty() {
   try {
     await connectToDatabase();
-    if ((await Product.countDocuments()) > 0) return;
+    
+    // Check if the new products are already seeded, if so, skip to avoid double seeding
+    const exists = await Product.findOne({ slug: "pakistani-ecommerce-dropshipping-master-toolkit" });
+    if (exists) return;
+
+    // Clear old placeholder seed data
+    await Product.deleteMany({
+      slug: { $in: ["ecommerce-starter-kit-pakistan", "free-shipping-rate-cheatsheet"] }
+    });
 
     await Product.insertMany([
       {
-        slug: "ecommerce-starter-kit-pakistan",
-        title: "Ecommerce Starter Kit — Pakistan (PDF + Templates)",
-        shortDescription: "Complete guide + invoice templates for new Pakistani sellers.",
-        description: "<h2>What's Included</h2><ul><li>50-page ecommerce guide</li><li>Invoice templates</li><li>Courier cheat sheet</li></ul>",
-        price: 499,
-        comparePrice: 999,
+        slug: "pakistani-ecommerce-dropshipping-master-toolkit",
+        title: "Pakistani E-Commerce & Dropshipping Master Toolkit",
+        shortDescription: "Verified supplier directory (Karachi/Lahore/Faisalabad), COD rate calculators, product research sheets, and Meta Ads copies.",
+        description: "<h2>What's Inside the Master Toolkit</h2><p>This toolkit is compiled specifically for Pakistani dropshippers, ecommerce brand owners, and local resellers to streamline sourcing and shipping operations.</p><ul><li><strong>Verified Supplier Directory:</strong> Active WhatsApp & shop details of wholesale vendors in Shah Alam Market (Lahore), Faisalabad Cloth Markets, and Karachi Sourcing Hubs.</li><li><strong>COD Profit Margin Sheet:</strong> Automated Excel calculator including return ratios for TCS, Leopards Courier, and BlueEx to calculate exact margins.</li><li><strong>Winning Product Sheet:</strong> Hot trending local sourcing product lists with pricing thresholds.</li><li><strong>Meta Ads Copy Templates:</strong> Ready-to-use Facebook, Instagram, and TikTok script templates designed for maximum CTR.</li></ul>",
+        price: 1499,
+        comparePrice: 3500,
         category: "business",
         image: "",
-        fileUrl: "https://drive.google.com/",
-        fileType: "PDF + ZIP",
+        fileUrl: "https://drive.google.com/file/d/1_e-com-toolkit/view",
+        fileType: "ZIP File",
         featured: true,
         published: true,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
       {
-        slug: "free-shipping-rate-cheatsheet",
-        title: "Free Courier Rate Cheatsheet 2026",
-        shortDescription: "Free PDF with Leopard, TCS, M&P & BlueEx rate tables.",
-        description: "<p>Download our free 2026 courier rate cheatsheet.</p>",
-        price: 0,
-        comparePrice: 0,
-        category: "business",
+        slug: "500-ecommerce-canva-ad-social-media-templates",
+        title: "500+ E-Commerce Canva Ad & Social Media Templates",
+        shortDescription: "High-converting TikTok/Reels video templates, product banners, sale graphics, and social posts editable in Canva.",
+        description: "<h2>What's Included</h2><p>Transform your brand's social presence with 500+ high-engagement, copy-paste templates editable inside Canva Free or Pro.</p><ul><li><strong>TikTok & Reels Frames:</strong> Viral layouts and video hook placeholders optimized for ecommerce sales.</li><li><strong>Product Showcase Posts:</strong> Clean layouts for Instagram feed and stories.</li><li><strong>Promo Banners:</strong> Eid collection sales, Mid-summer discounts, Black Friday, and general promotional graphics.</li><li><strong>Customer Review Templates:</strong> Showcase reviews beautifully to boost conversions.</li></ul>",
+        price: 999,
+        comparePrice: 2500,
+        category: "templates",
         image: "",
-        fileUrl: "https://drive.google.com/",
-        fileType: "PDF",
+        fileUrl: "https://drive.google.com/file/d/2_canva-templates/view",
+        fileType: "Canva Links",
         featured: true,
         published: true,
         createdAt: new Date(),
         updatedAt: new Date(),
       },
+      {
+        slug: "freelancer-agency-business-suite",
+        title: "Freelancer & Agency Business Suite",
+        shortDescription: "Tax filing sheet for Pakistani freelancers (FBR guide), automated invoice generator, and proposal templates.",
+        description: "<h2>What's Included</h2><p>A comprehensive business operational bundle for Pakistani freelancers, designers, developers, and agency owners to manage clients professionally.</p><ul><li><strong>Freelancer Tax Guide:</strong> Simple walkthrough for FBR filer registration and taxation guidelines in Pakistan.</li><li><strong>Invoice Generator:</strong> Automated spreadsheets to generate client bills in PKR, USD, and AED.</li><li><strong>Proposal Templates:</strong> Highly professional proposals to pitch client projects in web dev, SEO, social media, and design.</li><li><strong>Contract Agreements:</strong> Sample contract templates protect your freelance work payments.</li></ul>",
+        price: 1299,
+        comparePrice: 2999,
+        category: "tools",
+        image: "",
+        fileUrl: "https://drive.google.com/file/d/3_agency-suite/view",
+        fileType: "ZIP + Excel",
+        featured: true,
+        published: true,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      }
     ]);
-  } catch {
-    // Non-blocking
+  } catch (err) {
+    console.error("[shop-actions.ts] seedProductsIfEmpty failed:", err);
   }
 }

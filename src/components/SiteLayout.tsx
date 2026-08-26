@@ -217,7 +217,6 @@ export default function SiteLayout({ children, siteLogo }: SiteLayoutProps) {
           <span>✓ Daily Updated</span>
           <span>✓ Multi-Niche Guides</span>
           <span>✓ Verified Insights</span>
-          <span>✓ Google AdSense Partner</span>
         </div>
       </div>
 
@@ -263,13 +262,18 @@ export default function SiteLayout({ children, siteLogo }: SiteLayoutProps) {
                 </li>
               ))}
               <li>
-                <Link href="/privacy" className="hover:text-[#0ea5e9] transition-colors">
+                <Link href="/privacy-policy" className="hover:text-[#0ea5e9] transition-colors">
                   Privacy Policy
                 </Link>
               </li>
               <li>
-                <Link href="/terms" className="hover:text-[#0ea5e9] transition-colors">
+                <Link href="/terms-of-service" className="hover:text-[#0ea5e9] transition-colors">
                   Terms of Service
+                </Link>
+              </li>
+              <li>
+                <Link href="/disclaimer" className="hover:text-[#0ea5e9] transition-colors">
+                  Disclaimer
                 </Link>
               </li>
             </ul>

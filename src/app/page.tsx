@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getBlogsAction, getSettingsAction, seedBlogsIfEmpty } from "@/lib/actions";
+import { getProductsAction, seedProductsIfEmpty } from "@/lib/shop-actions";
 import AdSlot from "@/components/AdSlot";
 import HomeClient from "@/components/HomeClient";
 import {
@@ -47,12 +48,21 @@ const TICKER_ITEMS = [
 export default async function HomePage() {
   let blogs: Awaited<ReturnType<typeof getBlogsAction>> = [];
   let settings = { siteLogo: "", adsenseId: "", groqKey: "", geminiKey: "", youtubeKey: "" };
+  let products: any[] = [];
 
   try {
     await seedBlogsIfEmpty();
-    [blogs, settings] = await Promise.all([getBlogsAction(), getSettingsAction()]);
-  } catch {
-    // Continue with empty blogs if database is unavailable
+    await seedProductsIfEmpty();
+    const [b, s, p] = await Promise.all([
+      getBlogsAction(),
+      getSettingsAction(),
+      getProductsAction()
+    ]);
+    blogs = b;
+    settings = s;
+    products = p;
+  } catch (err) {
+    console.error("HomePage failed to fetch initial data:", err);
   }
 
   // Use the first blog post as the Hero Featured Banner, list next 6 in the grid below
@@ -372,6 +382,81 @@ export default async function HomePage() {
       <div className="max-w-6xl mx-auto px-4 my-2">
         <AdSlot size="728x90" label="Middle Banner Ad" adsenseId={settings.adsenseId} />
       </div>
+
+      {/* Digital Products Section */}
+      {products && products.length > 0 && (
+        <section className="bg-white py-14">
+          <div className="max-w-6xl mx-auto px-4">
+            <div className="text-center mb-10">
+              <span className="inline-block px-4 py-1.5 rounded-full bg-amber-500/10 text-amber-600 text-xs font-bold uppercase tracking-wider mb-3">
+                Premium Resources
+              </span>
+              <h2 className="text-2xl sm:text-3xl font-extrabold text-[#0f172a] mb-2">
+                Featured Digital Products &amp; Toolkits
+              </h2>
+              <p className="text-slate-500 text-xs sm:text-sm max-w-lg mx-auto">
+                Premium templates, supplier lists, and business suites designed specifically to help you succeed in Pakistan.
+              </p>
+            </div>
+
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+              {products.slice(0, 3).map((p: any) => {
+                const image = p.image || `https://image.pollinations.ai/prompt/${encodeURIComponent(p.title + ", digital mockup, premium palette")}?width=600&height=340&nologo=true&seed=${p._id}`;
+                return (
+                  <div key={p._id} className="group bg-white rounded-2xl border border-[var(--border)] overflow-hidden hover:shadow-lg transition-all flex flex-col justify-between">
+                    <div>
+                      <div className="aspect-video bg-slate-100 overflow-hidden relative">
+                        <img src={image} alt={p.title} className="w-full h-full object-cover group-hover:scale-103 transition-transform duration-300" loading="lazy" />
+                        <span className="absolute top-3 left-3 text-[9px] font-bold px-2 py-0.5 rounded-full bg-[#f59e0b] text-white">
+                          {p.fileType}
+                        </span>
+                      </div>
+                      <div className="p-6">
+                        <h3 className="font-bold text-slate-800 text-base mb-2 group-hover:text-[#0ea5e9] transition-colors leading-snug line-clamp-2">
+                          {p.title}
+                        </h3>
+                        <p className="text-slate-500 text-xs leading-relaxed line-clamp-3 mb-4">
+                          {p.shortDescription}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="px-6 pb-6 pt-2">
+                      <div className="flex items-center justify-between gap-4 mb-4">
+                        <div>
+                          <span className="text-lg font-black text-[#0f172a]">Rs. {p.price.toLocaleString()}</span>
+                          {p.comparePrice > p.price && (
+                            <span className="ml-2 text-xs text-slate-400 line-through">Rs. {p.comparePrice.toLocaleString()}</span>
+                          )}
+                        </div>
+                        {p.comparePrice > p.price && (
+                          <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-2 py-0.5 rounded">
+                            Save {Math.round(((p.comparePrice - p.price) / p.comparePrice) * 100)}%
+                          </span>
+                        )}
+                      </div>
+                      <Link
+                        href={`/shop/${p.slug}`}
+                        className="block text-center w-full py-2.5 rounded-xl bg-[#0ea5e9] hover:bg-[#0284c7] text-white text-xs font-bold transition-all shadow-md"
+                      >
+                        View Details &amp; Buy Now
+                      </Link>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="text-center mt-10">
+              <Link
+                href="/shop"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-[#0ea5e9] hover:underline"
+              >
+                Browse All Digital Products <ArrowRight className="size-3.5" />
+              </Link>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Utilities Directory Section */}
       <section className="bg-slate-50 py-14 border-y border-[var(--border)]">

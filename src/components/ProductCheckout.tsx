@@ -182,6 +182,27 @@ export default function ProductCheckout({
             : "Get Free Download"}
       </button>
 
+      {isPaid && (
+        <>
+          <div className="relative flex py-1 items-center">
+            <div className="flex-grow border-t border-slate-100"></div>
+            <span className="flex-shrink mx-3 text-[10px] text-slate-400 font-bold uppercase tracking-wider">OR</span>
+            <div className="flex-grow border-t border-slate-100"></div>
+          </div>
+
+          <a
+            href={`https://wa.me/${settings.whatsappNumber}?text=${encodeURIComponent(
+              `Hi, I want to buy "${product.title}" (Rs. ${product.price}) directly. Please share payment details.`
+            )}`}
+            target="_blank"
+            rel="noreferrer"
+            className="w-full text-center py-3 bg-[#25D366] hover:bg-[#20ba5a] text-white text-xs font-bold rounded-xl transition-all shadow-sm flex items-center justify-center gap-1.5"
+          >
+            Buy Directly via WhatsApp →
+          </a>
+        </>
+      )}
+
       <p className="text-xs text-slate-400 text-center">
         🔒 Secure checkout · Instant delivery for free products
       </p>

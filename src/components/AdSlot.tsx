@@ -9,6 +9,8 @@ interface AdSlotProps {
 }
 
 export default function AdSlot({ size, label = "Advertisement", adsenseId }: AdSlotProps) {
+  if (!adsenseId) return null;
+
   // If it's a desktop leaderboard, we split it into desktop (728x90) and mobile (320x100 or 300x250)
   if (size === "728x90") {
     return (
