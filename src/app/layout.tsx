@@ -99,6 +99,11 @@ export default async function RootLayout({
           title={`${SITE_NAME} RSS Feed`}
           href={`${SITE_URL}/feed.xml`}
         />
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1926531298861502"
+          crossOrigin="anonymous"
+        />
         {settings.adsenseId && (
           <script
             async
